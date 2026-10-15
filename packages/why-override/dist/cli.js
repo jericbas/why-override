@@ -1385,49 +1385,105 @@ var reasonsBySelector = new Map(reasonDocument.reasons.map((record) => [
 var selectors = collectOverrideSelectors(manifest.overrides);
 var promptTimeoutSeconds = getPromptTimeoutSeconds();
 var promptInterface = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
-try {
-  for (const selector of selectors) {
-    const key = selectorKey(selector);
-    const displaySelector = formatSelector(selector);
-    const reason = reasonsBySelector.get(key);
-    if (typeof reason === "string" && reason.trim() !== "") {
-      console.log(`Override ${displaySelector}: ${reason}`);
-      continue;
-    }
-    if (!promptInterface) {
-      continue;
-    }
-    let timeoutHandle;
-    const timeoutToken = Symbol("prompt-timeout");
-    const response = await Promise.race([
-      promptInterface.question(`Why do you need to override this? ${displaySelector}
+async function askForExplanation(displaySelector) {
+  if (!promptInterface) {
+    return;
+  }
+  let timeoutHandle;
+  const timeoutToken = Symbol("prompt-timeout");
+  const response = await Promise.race([
+    promptInterface.question(`Why do you need to override this? ${displaySelector}
 `),
-      new Promise((resolveTimeout) => {
-        timeoutHandle = setTimeout(() => resolveTimeout(timeoutToken), promptTimeoutSeconds * 1000);
-      })
-    ]);
-    clearTimeout(timeoutHandle);
-    if (response === timeoutToken) {
-      console.warn(`Timed out after ${promptTimeoutSeconds} seconds; skipping ${displaySelector}.`);
-      promptInterface.close();
-      break;
+    new Promise((resolveTimeout) => {
+      timeoutHandle = setTimeout(() => resolveTimeout(timeoutToken), promptTimeoutSeconds * 1000);
+    })
+  ]);
+  clearTimeout(timeoutHandle);
+  if (response === timeoutToken) {
+    console.warn(`Timed out after ${promptTimeoutSeconds} seconds; skipping ${displaySelector}.`);
+    promptInterface.close();
+    return;
+  }
+  return response.trim();
+}
+async function refreshReason(selector) {
+  const key = selectorKey(selector);
+  const recordIndex = reasonDocument.reasons.findIndex((record) => selectorKey(Array.isArray(record.selector) ? record.selector : [record.selector]) === key);
+  const displaySelector = formatSelector(selector);
+  if (recordIndex < 0) {
+    console.error(`No saved reason exists for ${displaySelector}.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!promptInterface) {
+    console.error("Refreshing a reason requires an interactive terminal.");
+    process.exitCode = 1;
+    return;
+  }
+  const explanation = await askForExplanation(displaySelector);
+  if (explanation === undefined || explanation === "") {
+    return;
+  }
+  const record = reasonDocument.reasons[recordIndex];
+  if (explanation === record.reason) {
+    console.log(`Reason unchanged for ${displaySelector}.`);
+    return;
+  }
+  const updatedAt = new Date().toISOString();
+  const formattingOptions = {
+    formattingOptions: { insertSpaces: true, tabSize: 2 }
+  };
+  const edits = [
+    ...modify(reasonText, ["reasons", recordIndex, "reason"], explanation, formattingOptions),
+    ...modify(reasonText, ["reasons", recordIndex, "updatedAt"], updatedAt, formattingOptions)
+  ];
+  reasonText = applyEdits(reasonText, edits);
+  writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
+  console.log(`Refreshed reason for ${displaySelector}.`);
+}
+try {
+  if (process.argv[2] === "refresh") {
+    let selector;
+    try {
+      selector = JSON.parse(process.argv[3] ?? "");
+    } catch {
+      selector = undefined;
     }
-    const explanation = response.trim();
-    if (explanation === "") {
-      continue;
+    if (process.argv.length !== 4 || !Array.isArray(selector) || selector.length === 0 || !selector.every((segment) => typeof segment === "string")) {
+      console.error(`Usage: why-override refresh '["package", "nested-selector"]'`);
+      process.exitCode = 1;
+    } else {
+      await refreshReason(selector);
     }
-    const timestamp = new Date().toISOString();
-    const record = {
-      selector,
-      reason: explanation,
-      createdAt: timestamp,
-      updatedAt: timestamp
-    };
-    const edits = modify(reasonText, ["reasons", reasonDocument.reasons.length], record, { formattingOptions: { insertSpaces: true, tabSize: 2 } });
-    reasonText = applyEdits(reasonText, edits);
-    writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
-    reasonDocument.reasons.push(record);
-    reasonsBySelector.set(key, explanation);
+  } else {
+    for (const selector of selectors) {
+      const key = selectorKey(selector);
+      const displaySelector = formatSelector(selector);
+      const reason = reasonsBySelector.get(key);
+      if (typeof reason === "string" && reason.trim() !== "") {
+        console.log(`Override ${displaySelector}: ${reason}`);
+        continue;
+      }
+      const explanation = await askForExplanation(displaySelector);
+      if (explanation === undefined) {
+        break;
+      }
+      if (explanation === "") {
+        continue;
+      }
+      const timestamp = new Date().toISOString();
+      const record = {
+        selector,
+        reason: explanation,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      const edits = modify(reasonText, ["reasons", reasonDocument.reasons.length], record, { formattingOptions: { insertSpaces: true, tabSize: 2 } });
+      reasonText = applyEdits(reasonText, edits);
+      writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
+      reasonDocument.reasons.push(record);
+      reasonsBySelector.set(key, explanation);
+    }
   }
 } finally {
   promptInterface?.close();

@@ -42,3 +42,13 @@ positive integer number of seconds, or configure the project fallback in
 
 The environment variable takes precedence over the project setting. Invalid
 values warn and fall back to 10 seconds.
+
+Refresh an existing explanation from an interactive terminal by passing its
+exact selector path as a JSON string array:
+
+```sh
+why-override refresh '["is-number"]'
+```
+
+Changing the explanation preserves `createdAt` and updates `updatedAt`. Entering
+the existing explanation again leaves both timestamps unchanged.

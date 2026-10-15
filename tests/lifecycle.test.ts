@@ -378,6 +378,164 @@ test("invalid project timeout warns and falls back to ten seconds", async () => 
   }
 });
 
+test("refresh updates changed reason but preserves creation time", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const installResult = await runNpm(fixtureRoot, [
+      "install",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    expect(installResult.exitCode).toBe(0);
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const createdAt = "2020-01-01T00:00:00.000Z";
+    const originalUpdatedAt = "2021-01-01T00:00:00.000Z";
+    await writeFile(
+      reasonStorePath,
+      JSON.stringify(
+        {
+          version: 1,
+          reasons: [
+            {
+              selector: ["is-number"],
+              reason: "Original rationale.",
+              createdAt,
+              updatedAt: originalUpdatedAt,
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const refreshArgs = [
+      "exec",
+      "--workspace=@why-override/demo",
+      "--",
+      "why-override",
+      "refresh",
+      '["is-number"]',
+    ];
+    const refreshed = await runInteractiveNpm(
+      fixtureRoot,
+      refreshArgs,
+      "Updated rationale.",
+    );
+
+    expect(refreshed.exitCode).toBe(0);
+    expect(refreshed.answered).toBe(true);
+    const refreshedDocument = parseJSONC(
+      await readFile(reasonStorePath, "utf8"),
+    );
+    expect(refreshedDocument.reasons[0]).toMatchObject({
+      selector: ["is-number"],
+      reason: "Updated rationale.",
+      createdAt,
+    });
+    expect(refreshedDocument.reasons[0].updatedAt).not.toBe(originalUpdatedAt);
+
+    const changedUpdatedAt = refreshedDocument.reasons[0].updatedAt;
+    const unchanged = await runInteractiveNpm(
+      fixtureRoot,
+      refreshArgs,
+      "Updated rationale.",
+    );
+
+    expect(unchanged.exitCode).toBe(0);
+    const unchangedDocument = parseJSONC(
+      await readFile(reasonStorePath, "utf8"),
+    );
+    expect(unchangedDocument.reasons[0].updatedAt).toBe(changedUpdatedAt);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("changing only an override target leaves its reason record unchanged", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const installResult = await runNpm(fixtureRoot, [
+      "install",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    expect(installResult.exitCode).toBe(0);
+    const manifestPath = join(fixtureRoot, "package.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.overrides["is-number"] = "7.0.1";
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const record = {
+      selector: ["is-number"],
+      reason: "Original rationale.",
+      createdAt: "2020-01-01T00:00:00.000Z",
+      updatedAt: "2021-01-01T00:00:00.000Z",
+    };
+    const originalReasonStore = JSON.stringify(
+      { version: 1, reasons: [record] },
+      null,
+      2,
+    );
+    await writeFile(reasonStorePath, originalReasonStore);
+
+    const result = await runInteractiveNpm(fixtureRoot, [
+      "exec",
+      "--workspace=@why-override/demo",
+      "--",
+      "why-override",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(false);
+    expect(result.output).toContain("Original rationale.");
+    expect(await readFile(reasonStorePath, "utf8")).toBe(originalReasonStore);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("aging documented reasons does not trigger an install prompt", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const oldReasonStore = JSON.stringify(
+      {
+        version: 1,
+        reasons: [
+          {
+            selector: ["is-number"],
+            reason: "Old but still documented.",
+            createdAt: "2020-01-01T00:00:00.000Z",
+            updatedAt: "2020-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+      null,
+      2,
+    );
+    await writeFile(reasonStorePath, oldReasonStore);
+
+    const result = await runInteractiveNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      undefined,
+      { OVERRIDE_TIMEOUT: "1" },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(false);
+    expect(result.output).toContain("Old but still documented.");
+    expect(await readFile(reasonStorePath, "utf8")).toBe(oldReasonStore);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("enforcer matches exact nested selector paths and rejects wildcard keys", async () => {
   const overrides = {
     "is-number": "7.0.0",
