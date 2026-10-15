@@ -8,11 +8,11 @@
     "apps/*"
   ],
   "scripts": {
-    "preinstall": "node packages/enforcer/dist/cli.js",
-    "build": "bun build packages/enforcer/src/cli.js --target=node --outfile=packages/enforcer/dist/cli.js",
+    "preinstall": "node packages/why-override/dist/cli.js",
+    "build": "bun build packages/why-override/src/cli.js --target=node --outfile=packages/why-override/dist/cli.js",
     "test": "bun test --timeout=20000",
-    "lint": "biome check apps packages/enforcer/src packages/enforcer/package.json tests package.json biome.json override-reasons.jsonc",
-    "format": "biome format --write apps packages/enforcer/src packages/enforcer/package.json tests package.json biome.json override-reasons.jsonc",
+    "lint": "biome check apps packages/why-override/src packages/why-override/package.json tests package.json biome.json override-reasons.jsonc",
+    "format": "biome format --write apps packages/why-override/src packages/why-override/package.json tests package.json biome.json override-reasons.jsonc",
     "demo": "bun run --filter @why-override/demo start && bun run --filter @why-override/demo check-overrides"
   },
   "overrides": {

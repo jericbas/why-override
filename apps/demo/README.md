@@ -1,7 +1,7 @@
 # Demo
 
 This app depends on `is-odd`, which depends on `is-number`, and installs the
-`why-override` CLI from the local package using a `file:` dependency. The root
+`why-override` CLI from `packages/why-override` using a `file:` dependency. The root
 `package.json` owns the effective `is-number` override; npm does not apply
 independent override fields from workspace members.
 

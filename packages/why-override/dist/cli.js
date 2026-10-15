@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// packages/enforcer/src/cli.js
+// packages/why-override/src/cli.js
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -809,7 +809,7 @@ var ParseErrorCode;
   ParseErrorCode[ParseErrorCode["InvalidCharacter"] = 16] = "InvalidCharacter";
 })(ParseErrorCode || (ParseErrorCode = {}));
 
-// packages/enforcer/src/cli.js
+// packages/why-override/src/cli.js
 var workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 var manifest = JSON.parse(readFileSync(resolve(workspaceRoot, "package.json"), "utf8"));
 var reasonText = readFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), "utf8");
