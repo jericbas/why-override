@@ -52,3 +52,8 @@ why-override refresh '["is-number"]'
 
 Changing the explanation preserves `createdAt` and updates `updatedAt`. Entering
 the existing explanation again leaves both timestamps unchanged.
+
+Reasons last updated 30 days ago or more receive a review advisory. Malformed
+records and records for selectors no longer in the root overrides are warned
+about and preserved. These advisories do not block installation or automatically
+edit the reason store.

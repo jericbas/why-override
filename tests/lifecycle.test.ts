@@ -536,6 +536,159 @@ test("aging documented reasons does not trigger an install prompt", async () => 
   }
 });
 
+test("reasons warn at 30 days but not before the boundary", async () => {
+  const fixtureRoot = await createFixture({
+    "is-number": "7.0.0",
+    "is-odd": "3.0.1",
+  });
+
+  try {
+    const now = Date.now();
+    const reasons = [
+      {
+        selector: ["is-number"],
+        reason: "Recently reviewed rationale.",
+        createdAt: new Date(now - 29 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now - 29 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        selector: ["is-odd"],
+        reason: "Rationale at the review boundary.",
+        createdAt: new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ];
+    await writeFile(
+      join(fixtureRoot, "override-reasons.jsonc"),
+      JSON.stringify({ version: 1, reasons }, null, 2),
+    );
+
+    const result = await runEnforcer(fixtureRoot);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Recently reviewed rationale.");
+    expect(result.output).toContain("Rationale at the review boundary.");
+    expect(result.output).toContain("Review this override rationale");
+    expect(result.output).toContain('for "is-odd"');
+    expect(result.output).not.toContain('for "is-number"');
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("malformed reason records warn, remain intact, and are treated as undocumented", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const malformedRecord = {
+      selector: 42,
+      reason: "Unreadable selector record.",
+      createdAt: "not-a-date",
+      updatedAt: "not-a-date",
+    };
+    await writeFile(
+      reasonStorePath,
+      JSON.stringify({ version: 1, reasons: [malformedRecord] }, null, 2),
+    );
+
+    const result = await runInteractiveNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      "Recovered rationale.",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("malformed override reason record");
+    expect(result.answered).toBe(true);
+    const reasonDocument = parseJSONC(await readFile(reasonStorePath, "utf8"));
+    expect(reasonDocument.reasons[0]).toEqual(malformedRecord);
+    expect(reasonDocument.reasons[1]).toMatchObject({
+      selector: ["is-number"],
+      reason: "Recovered rationale.",
+    });
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("malformed reason store warns and remains unchanged without blocking install", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const malformedReasonStore = '{ "version": 1, "reasons": [\n';
+    await writeFile(reasonStorePath, malformedReasonStore);
+
+    const result = await runNpm(fixtureRoot, [
+      "install",
+      "--no-audit",
+      "--no-fund",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("override-reasons.jsonc is malformed");
+    expect(await readFile(reasonStorePath, "utf8")).toBe(malformedReasonStore);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("stale reason records warn and remain unchanged without blocking installs", async () => {
+  for (const command of ["install", "ci"]) {
+    const fixtureRoot = await createFixture();
+
+    try {
+      if (command === "ci") {
+        const lockResult = await runNpm(fixtureRoot, [
+          "install",
+          "--package-lock-only",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+        ]);
+        expect(lockResult.exitCode).toBe(0);
+      }
+
+      const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+      const staleReasonStore = JSON.stringify(
+        {
+          version: 1,
+          reasons: [
+            {
+              selector: ["removed-package"],
+              reason: "Preserve this stale rationale.",
+              createdAt: "2020-01-01T00:00:00.000Z",
+              updatedAt: "2020-01-01T00:00:00.000Z",
+            },
+            {
+              selector: ["is-number"],
+              reason: "Current rationale.",
+              createdAt: "2026-10-15T00:00:00.000Z",
+              updatedAt: "2026-10-15T00:00:00.000Z",
+            },
+          ],
+        },
+        null,
+        2,
+      );
+      await writeFile(reasonStorePath, staleReasonStore);
+
+      const result = await runNpm(fixtureRoot, [
+        command,
+        "--no-audit",
+        "--no-fund",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("stale override reason");
+      expect(result.output).toContain("Current rationale.");
+      expect(await readFile(reasonStorePath, "utf8")).toBe(staleReasonStore);
+    } finally {
+      await rm(fixtureRoot, { recursive: true, force: true });
+    }
+  }
+});
+
 test("enforcer matches exact nested selector paths and rejects wildcard keys", async () => {
   const overrides = {
     "is-number": "7.0.0",
@@ -570,7 +723,6 @@ test("enforcer matches exact nested selector paths and rejects wildcard keys", a
     );
 
     const result = await runEnforcer(fixtureRoot);
-
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("Parent package rationale.");
     expect(result.output).toContain("Nested child rationale.");

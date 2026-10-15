@@ -1337,6 +1337,7 @@ var parseErrors = [];
 var reasonDocument = parse2(reasonText, parseErrors, {
   allowTrailingComma: true
 });
+var reasonStoreWritable = true;
 function collectOverrideSelectors(overrides, parentPath = []) {
   const selectors = [];
   for (const [key, value] of Object.entries(overrides ?? {})) {
@@ -1359,6 +1360,24 @@ function selectorKey(selector) {
 function formatSelector(selector) {
   return selector.map((segment) => JSON.stringify(segment)).join(" > ");
 }
+function warnDiagnostic(message) {
+  console.warn(`\x1B[33;1m[why-override] Warning: ${message}\x1B[0m`);
+}
+function getRecordSelector(record) {
+  if (record === null || typeof record !== "object" || Array.isArray(record)) {
+    return;
+  }
+  if (typeof record.selector === "string" && record.selector.length > 0) {
+    return [record.selector];
+  }
+  if (Array.isArray(record.selector) && record.selector.length > 0 && record.selector.every((segment) => typeof segment === "string" && segment.length > 0)) {
+    return record.selector;
+  }
+  return;
+}
+function isUtcTimestamp(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value;
+}
 var defaultPromptTimeoutSeconds = 10;
 function getPromptTimeoutSeconds() {
   const environmentTimeout = process.env.OVERRIDE_TIMEOUT;
@@ -1375,14 +1394,31 @@ function getPromptTimeoutSeconds() {
   return defaultPromptTimeoutSeconds;
 }
 if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
-  console.warn("Warning: override-reasons.jsonc is malformed; skipping saved reasons.");
-  process.exit(0);
+  warnDiagnostic("override-reasons.jsonc is malformed; saved reasons cannot be read or updated.");
+  reasonDocument = { version: 1, reasons: [] };
+  reasonStoreWritable = false;
 }
-var reasonsBySelector = new Map(reasonDocument.reasons.map((record) => [
-  selectorKey(Array.isArray(record.selector) ? record.selector : [record.selector]),
-  record.reason
-]));
 var selectors = collectOverrideSelectors(manifest.overrides);
+var activeSelectorKeys = new Set(selectors.map(selectorKey));
+var reasonsBySelector = new Map;
+var minimumReviewAgeMilliseconds = 30 * 24 * 60 * 60 * 1000;
+for (const record of reasonDocument.reasons) {
+  const selector = getRecordSelector(record);
+  const displaySelector = selector ? formatSelector(selector) : "unknown selector";
+  if (!selector || typeof record.reason !== "string" || record.reason.trim() === "" || !isUtcTimestamp(record.createdAt) || !isUtcTimestamp(record.updatedAt)) {
+    warnDiagnostic(`malformed override reason record for ${displaySelector}; treating it as undocumented and preserving the record.`);
+    continue;
+  }
+  const key = selectorKey(selector);
+  if (!activeSelectorKeys.has(key)) {
+    warnDiagnostic(`stale override reason for ${displaySelector}; preserving the record.`);
+    continue;
+  }
+  reasonsBySelector.set(key, record.reason);
+  if (Date.now() - Date.parse(record.updatedAt) >= minimumReviewAgeMilliseconds) {
+    warnDiagnostic(`Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`);
+  }
+}
 var promptTimeoutSeconds = getPromptTimeoutSeconds();
 var promptInterface = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
 async function askForExplanation(displaySelector) {
@@ -1408,7 +1444,7 @@ async function askForExplanation(displaySelector) {
 }
 async function refreshReason(selector) {
   const key = selectorKey(selector);
-  const recordIndex = reasonDocument.reasons.findIndex((record) => selectorKey(Array.isArray(record.selector) ? record.selector : [record.selector]) === key);
+  const recordIndex = reasonDocument.reasons.findIndex((record) => getRecordSelector(record) !== undefined && selectorKey(getRecordSelector(record)) === key);
   const displaySelector = formatSelector(selector);
   if (recordIndex < 0) {
     console.error(`No saved reason exists for ${displaySelector}.`);
@@ -1464,11 +1500,18 @@ try {
         console.log(`Override ${displaySelector}: ${reason}`);
         continue;
       }
+      if (!promptInterface) {
+        continue;
+      }
       const explanation = await askForExplanation(displaySelector);
       if (explanation === undefined) {
         break;
       }
       if (explanation === "") {
+        continue;
+      }
+      if (!reasonStoreWritable) {
+        warnDiagnostic(`cannot save a reason for ${displaySelector} because the reason store is malformed; leaving it unchanged.`);
         continue;
       }
       const timestamp = new Date().toISOString();
