@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "reasons": [
+    {
+      "selector": "is-number",
+      "reason": "Keep is-odd's transitive is-number dependency on a known compatible release.",
+      "createdAt": "2026-10-15T00:00:00.000Z",
+      "updatedAt": "2026-10-15T00:00:00.000Z"
+    }
+  ]
+}
