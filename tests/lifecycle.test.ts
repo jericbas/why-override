@@ -1,9 +1,13 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "..");
+const parseJSONC = createRequire(
+  join(repositoryRoot, "packages/why-override/package.json"),
+)("jsonc-parser").parse;
 const documentedReason =
   "Keep is-odd's transitive is-number dependency on a known compatible release.";
 
@@ -81,6 +85,142 @@ async function runNpm(fixtureRoot: string, args: string[]) {
 
   return { output: `${stdout}\n${stderr}`, exitCode };
 }
+
+async function runInteractiveNpm(
+  fixtureRoot: string,
+  args: string[],
+  answer: string,
+) {
+  let output = "";
+  let answered = false;
+  const decoder = new TextDecoder();
+  const child = Bun.spawn(["npm", ...args], {
+    cwd: fixtureRoot,
+    terminal: {
+      cols: 100,
+      rows: 30,
+      data(terminal, data) {
+        output += decoder.decode(data, { stream: true });
+        if (!answered && output.includes("Why do you need to override this?")) {
+          answered = true;
+          terminal.write(`${answer}\r`);
+        }
+      },
+    },
+  });
+  const exitCode = await child.exited;
+  child.terminal.close();
+
+  return { output: `${output}${decoder.decode()}`, exitCode, answered };
+}
+
+test("interactive npm install saves a reason and displays it next time", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    await writeFile(
+      reasonStorePath,
+      '{\n  "version": 1,\n  // Reasons are reviewed with dependency changes.\n  "reasons": []\n}\n',
+    );
+
+    const result = await runInteractiveNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      "Needed to keep the demo compatible.",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.answered).toBe(true);
+    expect(result.output).toContain("Why do you need to override this?");
+
+    const reasonStoreText = await readFile(reasonStorePath, "utf8");
+    const reasonStore = parseJSONC(reasonStoreText);
+    expect(reasonStoreText).toContain(
+      "// Reasons are reviewed with dependency changes.",
+    );
+    expect(reasonStore.reasons).toHaveLength(1);
+    expect(reasonStore.reasons[0]).toMatchObject({
+      selector: "is-number",
+      reason: "Needed to keep the demo compatible.",
+    });
+    expect(reasonStore.reasons[0].createdAt).toBe(
+      reasonStore.reasons[0].updatedAt,
+    );
+    expect(reasonStore.reasons[0].createdAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+
+    const nextInstall = await runNpm(fixtureRoot, [
+      "install",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    expect(nextInstall.exitCode).toBe(0);
+    expect(nextInstall.output).toContain("Needed to keep the demo compatible.");
+    expect(nextInstall.output).not.toContain(
+      "Why do you need to override this?",
+    );
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("empty interactive answer leaves the reason store unchanged", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const emptyReasonStore = JSON.stringify(
+      { version: 1, reasons: [] },
+      null,
+      2,
+    );
+    await writeFile(reasonStorePath, emptyReasonStore);
+
+    const result = await runInteractiveNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      "",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.answered).toBe(true);
+    expect(
+      JSON.stringify(JSON.parse(await readFile(reasonStorePath, "utf8"))),
+    ).toBe(JSON.stringify(JSON.parse(emptyReasonStore)));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("non-TTY npm install skips undocumented reasons", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const emptyReasonStore = JSON.stringify(
+      { version: 1, reasons: [] },
+      null,
+      2,
+    );
+    await writeFile(reasonStorePath, emptyReasonStore);
+
+    const result = await runNpm(fixtureRoot, [
+      "install",
+      "--no-audit",
+      "--no-fund",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).not.toContain("Why do you need to override this?");
+    expect(
+      JSON.stringify(JSON.parse(await readFile(reasonStorePath, "utf8"))),
+    ).toBe(JSON.stringify(JSON.parse(emptyReasonStore)));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
 
 for (const command of ["install", "ci"]) {
   test(`npm ${command} displays the saved root override reason`, async () => {
