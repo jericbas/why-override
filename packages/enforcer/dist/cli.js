@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // packages/enforcer/src/cli.js
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

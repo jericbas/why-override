@@ -14,11 +14,17 @@
       "dependencies": {
         "is-odd": "^3.0.1",
       },
+      "devDependencies": {
+        "why-override": "file:../../packages/enforcer",
+      },
     },
     "packages/enforcer": {
-      "name": "@why-override/enforcer",
+      "name": "why-override",
       "version": "0.1.0",
-      "dependencies": {
+      "bin": {
+        "why-override": "./dist/cli.js",
+      },
+      "devDependencies": {
         "jsonc-parser": "^3.3.1",
       },
     },
@@ -47,12 +53,12 @@
 
     "@why-override/demo": ["@why-override/demo@workspace:apps/demo"],
 
-    "@why-override/enforcer": ["@why-override/enforcer@workspace:packages/enforcer"],
-
     "is-number": ["is-number@7.0.0", "", {}, "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng=="],
 
     "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA=="],
 
     "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
+
+    "why-override": ["why-override@workspace:packages/enforcer"],
   }
 }
