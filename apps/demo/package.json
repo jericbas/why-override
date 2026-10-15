@@ -11,6 +11,6 @@
     "is-odd": "^3.0.1"
   },
   "devDependencies": {
-    "why-override": "file:../../packages/enforcer"
+    "why-override": "file:../../packages/why-override"
   }
 }

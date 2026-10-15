@@ -18,11 +18,11 @@ async function createFixture() {
     );
     const enforcerManifest = JSON.parse(
       await readFile(
-        join(repositoryRoot, "packages/enforcer/package.json"),
+        join(repositoryRoot, "packages/why-override/package.json"),
         "utf8",
       ),
     );
-    const packageDirectory = join(fixtureRoot, "packages/enforcer");
+    const packageDirectory = join(fixtureRoot, "packages/why-override");
     const demoDirectory = join(fixtureRoot, "apps/demo");
     const fixtureRootManifest = {
       ...rootManifest,
@@ -55,7 +55,7 @@ async function createFixture() {
     await writeFile(
       join(packageDirectory, "dist/cli.js"),
       await readFile(
-        join(repositoryRoot, "packages/enforcer/dist/cli.js"),
+        join(repositoryRoot, "packages/why-override/dist/cli.js"),
         "utf8",
       ),
     );

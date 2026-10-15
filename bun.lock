@@ -15,10 +15,10 @@
         "is-odd": "^3.0.1",
       },
       "devDependencies": {
-        "why-override": "file:../../packages/enforcer",
+        "why-override": "file:../../packages/why-override",
       },
     },
-    "packages/enforcer": {
+    "packages/why-override": {
       "name": "why-override",
       "version": "0.1.0",
       "bin": {
@@ -59,6 +59,6 @@
 
     "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
 
-    "why-override": ["why-override@workspace:packages/enforcer"],
+    "why-override": ["why-override@workspace:packages/why-override"],
   }
 }
