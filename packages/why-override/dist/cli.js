@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 // packages/why-override/src/cli.js
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.bun/jsonc-parser@3.3.1/node_modules/jsonc-parser/lib/esm/impl/scanner.js
@@ -453,6 +454,249 @@ var cachedBreakLinesWithSpaces = {
     })
   }
 };
+var supportedEols = [`
+`, "\r", `\r
+`];
+
+// node_modules/.bun/jsonc-parser@3.3.1/node_modules/jsonc-parser/lib/esm/impl/format.js
+function format(documentText, range, options) {
+  let initialIndentLevel;
+  let formatText;
+  let formatTextStart;
+  let rangeStart;
+  let rangeEnd;
+  if (range) {
+    rangeStart = range.offset;
+    rangeEnd = rangeStart + range.length;
+    formatTextStart = rangeStart;
+    while (formatTextStart > 0 && !isEOL(documentText, formatTextStart - 1)) {
+      formatTextStart--;
+    }
+    let endOffset = rangeEnd;
+    while (endOffset < documentText.length && !isEOL(documentText, endOffset)) {
+      endOffset++;
+    }
+    formatText = documentText.substring(formatTextStart, endOffset);
+    initialIndentLevel = computeIndentLevel(formatText, options);
+  } else {
+    formatText = documentText;
+    initialIndentLevel = 0;
+    formatTextStart = 0;
+    rangeStart = 0;
+    rangeEnd = documentText.length;
+  }
+  const eol = getEOL(options, documentText);
+  const eolFastPathSupported = supportedEols.includes(eol);
+  let numberLineBreaks = 0;
+  let indentLevel = 0;
+  let indentValue;
+  if (options.insertSpaces) {
+    indentValue = cachedSpaces[options.tabSize || 4] ?? repeat(cachedSpaces[1], options.tabSize || 4);
+  } else {
+    indentValue = "\t";
+  }
+  const indentType = indentValue === "\t" ? "\t" : " ";
+  let scanner = createScanner(formatText, false);
+  let hasError = false;
+  function newLinesAndIndent() {
+    if (numberLineBreaks > 1) {
+      return repeat(eol, numberLineBreaks) + repeat(indentValue, initialIndentLevel + indentLevel);
+    }
+    const amountOfSpaces = indentValue.length * (initialIndentLevel + indentLevel);
+    if (!eolFastPathSupported || amountOfSpaces > cachedBreakLinesWithSpaces[indentType][eol].length) {
+      return eol + repeat(indentValue, initialIndentLevel + indentLevel);
+    }
+    if (amountOfSpaces <= 0) {
+      return eol;
+    }
+    return cachedBreakLinesWithSpaces[indentType][eol][amountOfSpaces];
+  }
+  function scanNext() {
+    let token = scanner.scan();
+    numberLineBreaks = 0;
+    while (token === 15 || token === 14) {
+      if (token === 14 && options.keepLines) {
+        numberLineBreaks += 1;
+      } else if (token === 14) {
+        numberLineBreaks = 1;
+      }
+      token = scanner.scan();
+    }
+    hasError = token === 16 || scanner.getTokenError() !== 0;
+    return token;
+  }
+  const editOperations = [];
+  function addEdit(text, startOffset, endOffset) {
+    if (!hasError && (!range || startOffset < rangeEnd && endOffset > rangeStart) && documentText.substring(startOffset, endOffset) !== text) {
+      editOperations.push({ offset: startOffset, length: endOffset - startOffset, content: text });
+    }
+  }
+  let firstToken = scanNext();
+  if (options.keepLines && numberLineBreaks > 0) {
+    addEdit(repeat(eol, numberLineBreaks), 0, 0);
+  }
+  if (firstToken !== 17) {
+    let firstTokenStart = scanner.getTokenOffset() + formatTextStart;
+    let initialIndent = indentValue.length * initialIndentLevel < 20 && options.insertSpaces ? cachedSpaces[indentValue.length * initialIndentLevel] : repeat(indentValue, initialIndentLevel);
+    addEdit(initialIndent, formatTextStart, firstTokenStart);
+  }
+  while (firstToken !== 17) {
+    let firstTokenEnd = scanner.getTokenOffset() + scanner.getTokenLength() + formatTextStart;
+    let secondToken = scanNext();
+    let replaceContent = "";
+    let needsLineBreak = false;
+    while (numberLineBreaks === 0 && (secondToken === 12 || secondToken === 13)) {
+      let commentTokenStart = scanner.getTokenOffset() + formatTextStart;
+      addEdit(cachedSpaces[1], firstTokenEnd, commentTokenStart);
+      firstTokenEnd = scanner.getTokenOffset() + scanner.getTokenLength() + formatTextStart;
+      needsLineBreak = secondToken === 12;
+      replaceContent = needsLineBreak ? newLinesAndIndent() : "";
+      secondToken = scanNext();
+    }
+    if (secondToken === 2) {
+      if (firstToken !== 1) {
+        indentLevel--;
+      }
+      if (options.keepLines && numberLineBreaks > 0 || !options.keepLines && firstToken !== 1) {
+        replaceContent = newLinesAndIndent();
+      } else if (options.keepLines) {
+        replaceContent = cachedSpaces[1];
+      }
+    } else if (secondToken === 4) {
+      if (firstToken !== 3) {
+        indentLevel--;
+      }
+      if (options.keepLines && numberLineBreaks > 0 || !options.keepLines && firstToken !== 3) {
+        replaceContent = newLinesAndIndent();
+      } else if (options.keepLines) {
+        replaceContent = cachedSpaces[1];
+      }
+    } else {
+      switch (firstToken) {
+        case 3:
+        case 1:
+          indentLevel++;
+          if (options.keepLines && numberLineBreaks > 0 || !options.keepLines) {
+            replaceContent = newLinesAndIndent();
+          } else {
+            replaceContent = cachedSpaces[1];
+          }
+          break;
+        case 5:
+          if (options.keepLines && numberLineBreaks > 0 || !options.keepLines) {
+            replaceContent = newLinesAndIndent();
+          } else {
+            replaceContent = cachedSpaces[1];
+          }
+          break;
+        case 12:
+          replaceContent = newLinesAndIndent();
+          break;
+        case 13:
+          if (numberLineBreaks > 0) {
+            replaceContent = newLinesAndIndent();
+          } else if (!needsLineBreak) {
+            replaceContent = cachedSpaces[1];
+          }
+          break;
+        case 6:
+          if (options.keepLines && numberLineBreaks > 0) {
+            replaceContent = newLinesAndIndent();
+          } else if (!needsLineBreak) {
+            replaceContent = cachedSpaces[1];
+          }
+          break;
+        case 10:
+          if (options.keepLines && numberLineBreaks > 0) {
+            replaceContent = newLinesAndIndent();
+          } else if (secondToken === 6 && !needsLineBreak) {
+            replaceContent = "";
+          }
+          break;
+        case 7:
+        case 8:
+        case 9:
+        case 11:
+        case 2:
+        case 4:
+          if (options.keepLines && numberLineBreaks > 0) {
+            replaceContent = newLinesAndIndent();
+          } else {
+            if ((secondToken === 12 || secondToken === 13) && !needsLineBreak) {
+              replaceContent = cachedSpaces[1];
+            } else if (secondToken !== 5 && secondToken !== 17) {
+              hasError = true;
+            }
+          }
+          break;
+        case 16:
+          hasError = true;
+          break;
+      }
+      if (numberLineBreaks > 0 && (secondToken === 12 || secondToken === 13)) {
+        replaceContent = newLinesAndIndent();
+      }
+    }
+    if (secondToken === 17) {
+      if (options.keepLines && numberLineBreaks > 0) {
+        replaceContent = newLinesAndIndent();
+      } else {
+        replaceContent = options.insertFinalNewline ? eol : "";
+      }
+    }
+    const secondTokenStart = scanner.getTokenOffset() + formatTextStart;
+    addEdit(replaceContent, firstTokenEnd, secondTokenStart);
+    firstToken = secondToken;
+  }
+  return editOperations;
+}
+function repeat(s, count) {
+  let result = "";
+  for (let i = 0;i < count; i++) {
+    result += s;
+  }
+  return result;
+}
+function computeIndentLevel(content, options) {
+  let i = 0;
+  let nChars = 0;
+  const tabSize = options.tabSize || 4;
+  while (i < content.length) {
+    let ch = content.charAt(i);
+    if (ch === cachedSpaces[1]) {
+      nChars++;
+    } else if (ch === "\t") {
+      nChars += tabSize;
+    } else {
+      break;
+    }
+    i++;
+  }
+  return Math.floor(nChars / tabSize);
+}
+function getEOL(options, text) {
+  for (let i = 0;i < text.length; i++) {
+    const ch = text.charAt(i);
+    if (ch === "\r") {
+      if (i + 1 < text.length && text.charAt(i + 1) === `
+`) {
+        return `\r
+`;
+      }
+      return "\r";
+    } else if (ch === `
+`) {
+      return `
+`;
+    }
+  }
+  return options && options.eol || `
+`;
+}
+function isEOL(text, offset) {
+  return `\r
+`.indexOf(text.charAt(offset)) !== -1;
+}
 
 // node_modules/.bun/jsonc-parser@3.3.1/node_modules/jsonc-parser/lib/esm/impl/parser.js
 var ParseOptions;
@@ -503,6 +747,95 @@ function parse(text, errors = [], options = ParseOptions.DEFAULT) {
   };
   visit(text, visitor, options);
   return currentParent[0];
+}
+function parseTree(text, errors = [], options = ParseOptions.DEFAULT) {
+  let currentParent = { type: "array", offset: -1, length: -1, children: [], parent: undefined };
+  function ensurePropertyComplete(endOffset) {
+    if (currentParent.type === "property") {
+      currentParent.length = endOffset - currentParent.offset;
+      currentParent = currentParent.parent;
+    }
+  }
+  function onValue(valueNode) {
+    currentParent.children.push(valueNode);
+    return valueNode;
+  }
+  const visitor = {
+    onObjectBegin: (offset) => {
+      currentParent = onValue({ type: "object", offset, length: -1, parent: currentParent, children: [] });
+    },
+    onObjectProperty: (name, offset, length) => {
+      currentParent = onValue({ type: "property", offset, length: -1, parent: currentParent, children: [] });
+      currentParent.children.push({ type: "string", value: name, offset, length, parent: currentParent });
+    },
+    onObjectEnd: (offset, length) => {
+      ensurePropertyComplete(offset + length);
+      currentParent.length = offset + length - currentParent.offset;
+      currentParent = currentParent.parent;
+      ensurePropertyComplete(offset + length);
+    },
+    onArrayBegin: (offset, length) => {
+      currentParent = onValue({ type: "array", offset, length: -1, parent: currentParent, children: [] });
+    },
+    onArrayEnd: (offset, length) => {
+      currentParent.length = offset + length - currentParent.offset;
+      currentParent = currentParent.parent;
+      ensurePropertyComplete(offset + length);
+    },
+    onLiteralValue: (value, offset, length) => {
+      onValue({ type: getNodeType(value), offset, length, parent: currentParent, value });
+      ensurePropertyComplete(offset + length);
+    },
+    onSeparator: (sep, offset, length) => {
+      if (currentParent.type === "property") {
+        if (sep === ":") {
+          currentParent.colonOffset = offset;
+        } else if (sep === ",") {
+          ensurePropertyComplete(offset);
+        }
+      }
+    },
+    onError: (error, offset, length) => {
+      errors.push({ error, offset, length });
+    }
+  };
+  visit(text, visitor, options);
+  const result = currentParent.children[0];
+  if (result) {
+    delete result.parent;
+  }
+  return result;
+}
+function findNodeAtLocation(root, path) {
+  if (!root) {
+    return;
+  }
+  let node = root;
+  for (let segment of path) {
+    if (typeof segment === "string") {
+      if (node.type !== "object" || !Array.isArray(node.children)) {
+        return;
+      }
+      let found = false;
+      for (const propertyNode of node.children) {
+        if (Array.isArray(propertyNode.children) && propertyNode.children[0].value === segment && propertyNode.children.length === 2) {
+          node = propertyNode.children[1];
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return;
+      }
+    } else {
+      const index = segment;
+      if (node.type !== "array" || index < 0 || !Array.isArray(node.children) || index >= node.children.length) {
+        return;
+      }
+      node = node.children[index];
+    }
+  }
+  return node;
 }
 function visit(text, visitor, options = ParseOptions.DEFAULT) {
   const _scanner = createScanner(text, false);
@@ -756,6 +1089,170 @@ function visit(text, visitor, options = ParseOptions.DEFAULT) {
   }
   return true;
 }
+function getNodeType(value) {
+  switch (typeof value) {
+    case "boolean":
+      return "boolean";
+    case "number":
+      return "number";
+    case "string":
+      return "string";
+    case "object": {
+      if (!value) {
+        return "null";
+      } else if (Array.isArray(value)) {
+        return "array";
+      }
+      return "object";
+    }
+    default:
+      return "null";
+  }
+}
+
+// node_modules/.bun/jsonc-parser@3.3.1/node_modules/jsonc-parser/lib/esm/impl/edit.js
+function setProperty(text, originalPath, value, options) {
+  const path = originalPath.slice();
+  const errors = [];
+  const root = parseTree(text, errors);
+  let parent = undefined;
+  let lastSegment = undefined;
+  while (path.length > 0) {
+    lastSegment = path.pop();
+    parent = findNodeAtLocation(root, path);
+    if (parent === undefined && value !== undefined) {
+      if (typeof lastSegment === "string") {
+        value = { [lastSegment]: value };
+      } else {
+        value = [value];
+      }
+    } else {
+      break;
+    }
+  }
+  if (!parent) {
+    if (value === undefined) {
+      throw new Error("Can not delete in empty document");
+    }
+    return withFormatting(text, { offset: root ? root.offset : 0, length: root ? root.length : 0, content: JSON.stringify(value) }, options);
+  } else if (parent.type === "object" && typeof lastSegment === "string" && Array.isArray(parent.children)) {
+    const existing = findNodeAtLocation(parent, [lastSegment]);
+    if (existing !== undefined) {
+      if (value === undefined) {
+        if (!existing.parent) {
+          throw new Error("Malformed AST");
+        }
+        const propertyIndex = parent.children.indexOf(existing.parent);
+        let removeBegin;
+        let removeEnd = existing.parent.offset + existing.parent.length;
+        if (propertyIndex > 0) {
+          let previous = parent.children[propertyIndex - 1];
+          removeBegin = previous.offset + previous.length;
+        } else {
+          removeBegin = parent.offset + 1;
+          if (parent.children.length > 1) {
+            let next = parent.children[1];
+            removeEnd = next.offset;
+          }
+        }
+        return withFormatting(text, { offset: removeBegin, length: removeEnd - removeBegin, content: "" }, options);
+      } else {
+        return withFormatting(text, { offset: existing.offset, length: existing.length, content: JSON.stringify(value) }, options);
+      }
+    } else {
+      if (value === undefined) {
+        return [];
+      }
+      const newProperty = `${JSON.stringify(lastSegment)}: ${JSON.stringify(value)}`;
+      const index = options.getInsertionIndex ? options.getInsertionIndex(parent.children.map((p) => p.children[0].value)) : parent.children.length;
+      let edit;
+      if (index > 0) {
+        let previous = parent.children[index - 1];
+        edit = { offset: previous.offset + previous.length, length: 0, content: "," + newProperty };
+      } else if (parent.children.length === 0) {
+        edit = { offset: parent.offset + 1, length: 0, content: newProperty };
+      } else {
+        edit = { offset: parent.offset + 1, length: 0, content: newProperty + "," };
+      }
+      return withFormatting(text, edit, options);
+    }
+  } else if (parent.type === "array" && typeof lastSegment === "number" && Array.isArray(parent.children)) {
+    const insertIndex = lastSegment;
+    if (insertIndex === -1) {
+      const newProperty = `${JSON.stringify(value)}`;
+      let edit;
+      if (parent.children.length === 0) {
+        edit = { offset: parent.offset + 1, length: 0, content: newProperty };
+      } else {
+        const previous = parent.children[parent.children.length - 1];
+        edit = { offset: previous.offset + previous.length, length: 0, content: "," + newProperty };
+      }
+      return withFormatting(text, edit, options);
+    } else if (value === undefined && parent.children.length >= 0) {
+      const removalIndex = lastSegment;
+      const toRemove = parent.children[removalIndex];
+      let edit;
+      if (parent.children.length === 1) {
+        edit = { offset: parent.offset + 1, length: parent.length - 2, content: "" };
+      } else if (parent.children.length - 1 === removalIndex) {
+        let previous = parent.children[removalIndex - 1];
+        let offset = previous.offset + previous.length;
+        let parentEndOffset = parent.offset + parent.length;
+        edit = { offset, length: parentEndOffset - 2 - offset, content: "" };
+      } else {
+        edit = { offset: toRemove.offset, length: parent.children[removalIndex + 1].offset - toRemove.offset, content: "" };
+      }
+      return withFormatting(text, edit, options);
+    } else if (value !== undefined) {
+      let edit;
+      const newProperty = `${JSON.stringify(value)}`;
+      if (!options.isArrayInsertion && parent.children.length > lastSegment) {
+        const toModify = parent.children[lastSegment];
+        edit = { offset: toModify.offset, length: toModify.length, content: newProperty };
+      } else if (parent.children.length === 0 || lastSegment === 0) {
+        edit = { offset: parent.offset + 1, length: 0, content: parent.children.length === 0 ? newProperty : newProperty + "," };
+      } else {
+        const index = lastSegment > parent.children.length ? parent.children.length : lastSegment;
+        const previous = parent.children[index - 1];
+        edit = { offset: previous.offset + previous.length, length: 0, content: "," + newProperty };
+      }
+      return withFormatting(text, edit, options);
+    } else {
+      throw new Error(`Can not ${value === undefined ? "remove" : options.isArrayInsertion ? "insert" : "modify"} Array index ${insertIndex} as length is not sufficient`);
+    }
+  } else {
+    throw new Error(`Can not add ${typeof lastSegment !== "number" ? "index" : "property"} to parent of type ${parent.type}`);
+  }
+}
+function withFormatting(text, edit, options) {
+  if (!options.formattingOptions) {
+    return [edit];
+  }
+  let newText = applyEdit(text, edit);
+  let begin = edit.offset;
+  let end = edit.offset + edit.content.length;
+  if (edit.length === 0 || edit.content.length === 0) {
+    while (begin > 0 && !isEOL(newText, begin - 1)) {
+      begin--;
+    }
+    while (end < newText.length && !isEOL(newText, end)) {
+      end++;
+    }
+  }
+  const edits = format(newText, { offset: begin, length: end - begin }, { ...options.formattingOptions, keepLines: false });
+  for (let i = edits.length - 1;i >= 0; i--) {
+    const edit = edits[i];
+    newText = applyEdit(newText, edit);
+    begin = Math.min(begin, edit.offset);
+    end = Math.max(end, edit.offset + edit.length);
+    end += edit.content.length - edit.length;
+  }
+  const editLength = text.length - (newText.length - end) - begin;
+  return [{ offset: begin, length: editLength, content: newText.substring(begin, end) }];
+}
+function applyEdit(text, edit) {
+  return text.substring(0, edit.offset) + edit.content + text.substring(edit.offset + edit.length);
+}
 
 // node_modules/.bun/jsonc-parser@3.3.1/node_modules/jsonc-parser/lib/esm/main.js
 var ScanError;
@@ -808,6 +1305,29 @@ var ParseErrorCode;
   ParseErrorCode[ParseErrorCode["InvalidEscapeCharacter"] = 15] = "InvalidEscapeCharacter";
   ParseErrorCode[ParseErrorCode["InvalidCharacter"] = 16] = "InvalidCharacter";
 })(ParseErrorCode || (ParseErrorCode = {}));
+function modify(text, path, value, options) {
+  return setProperty(text, path, value, options);
+}
+function applyEdits(text, edits) {
+  let sortedEdits = edits.slice(0).sort((a, b) => {
+    const diff = a.offset - b.offset;
+    if (diff === 0) {
+      return a.length - b.length;
+    }
+    return diff;
+  });
+  let lastModifiedOffset = text.length;
+  for (let i = sortedEdits.length - 1;i >= 0; i--) {
+    let e = sortedEdits[i];
+    if (e.offset + e.length <= lastModifiedOffset) {
+      text = applyEdit(text, e);
+    } else {
+      throw new Error("Overlapping edit");
+    }
+    lastModifiedOffset = e.offset;
+  }
+  return text;
+}
 
 // packages/why-override/src/cli.js
 var workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -817,14 +1337,197 @@ var parseErrors = [];
 var reasonDocument = parse2(reasonText, parseErrors, {
   allowTrailingComma: true
 });
-if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
-  console.warn("Warning: override-reasons.jsonc is malformed; skipping saved reasons.");
-  process.exit(0);
-}
-var reasonsBySelector = new Map(reasonDocument.reasons.map((record) => [record.selector, record.reason]));
-for (const selector of Object.keys(manifest.overrides ?? {})) {
-  const reason = reasonsBySelector.get(selector);
-  if (typeof reason === "string" && reason.trim() !== "") {
-    console.log(`Override ${selector}: ${reason}`);
+var reasonStoreWritable = true;
+function collectOverrideSelectors(overrides, parentPath = []) {
+  const selectors = [];
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    const selector = [...parentPath, key];
+    if (key.includes("*")) {
+      console.warn(`Warning: unsupported wildcard override selector ${JSON.stringify(selector)}; skipping.`);
+      continue;
+    }
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      selectors.push(...collectOverrideSelectors(value, selector));
+    } else if (typeof value === "string") {
+      selectors.push(selector);
+    }
   }
+  return selectors;
+}
+function selectorKey(selector) {
+  return JSON.stringify(selector);
+}
+function formatSelector(selector) {
+  return selector.map((segment) => JSON.stringify(segment)).join(" > ");
+}
+function warnDiagnostic(message) {
+  console.warn(`\x1B[33;1m[why-override] Warning: ${message}\x1B[0m`);
+}
+function getRecordSelector(record) {
+  if (record === null || typeof record !== "object" || Array.isArray(record)) {
+    return;
+  }
+  if (typeof record.selector === "string" && record.selector.length > 0) {
+    return [record.selector];
+  }
+  if (Array.isArray(record.selector) && record.selector.length > 0 && record.selector.every((segment) => typeof segment === "string" && segment.length > 0)) {
+    return record.selector;
+  }
+  return;
+}
+function isUtcTimestamp(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value;
+}
+var defaultPromptTimeoutSeconds = 10;
+function getPromptTimeoutSeconds() {
+  const environmentTimeout = process.env.OVERRIDE_TIMEOUT;
+  const projectTimeout = manifest.config?.["why-override"]?.timeout;
+  const configuredTimeout = environmentTimeout !== undefined ? environmentTimeout : projectTimeout;
+  if (configuredTimeout === undefined) {
+    return defaultPromptTimeoutSeconds;
+  }
+  const timeoutSeconds = Number(configuredTimeout);
+  if ((typeof configuredTimeout === "string" || typeof configuredTimeout === "number") && Number.isFinite(timeoutSeconds) && Number.isInteger(timeoutSeconds) && timeoutSeconds > 0) {
+    return timeoutSeconds;
+  }
+  console.warn(`Warning: invalid override prompt timeout ${JSON.stringify(configuredTimeout)}; using default ${defaultPromptTimeoutSeconds} seconds.`);
+  return defaultPromptTimeoutSeconds;
+}
+if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
+  warnDiagnostic("override-reasons.jsonc is malformed; saved reasons cannot be read or updated.");
+  reasonDocument = { version: 1, reasons: [] };
+  reasonStoreWritable = false;
+}
+var selectors = collectOverrideSelectors(manifest.overrides);
+var activeSelectorKeys = new Set(selectors.map(selectorKey));
+var reasonsBySelector = new Map;
+var minimumReviewAgeMilliseconds = 30 * 24 * 60 * 60 * 1000;
+for (const record of reasonDocument.reasons) {
+  const selector = getRecordSelector(record);
+  const displaySelector = selector ? formatSelector(selector) : "unknown selector";
+  if (!selector || typeof record.reason !== "string" || record.reason.trim() === "" || !isUtcTimestamp(record.createdAt) || !isUtcTimestamp(record.updatedAt)) {
+    warnDiagnostic(`malformed override reason record for ${displaySelector}; treating it as undocumented and preserving the record.`);
+    continue;
+  }
+  const key = selectorKey(selector);
+  if (!activeSelectorKeys.has(key)) {
+    warnDiagnostic(`stale override reason for ${displaySelector}; preserving the record.`);
+    continue;
+  }
+  reasonsBySelector.set(key, record.reason);
+  if (Date.now() - Date.parse(record.updatedAt) >= minimumReviewAgeMilliseconds) {
+    warnDiagnostic(`Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`);
+  }
+}
+var promptTimeoutSeconds = getPromptTimeoutSeconds();
+var promptInterface = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+async function askForExplanation(displaySelector) {
+  if (!promptInterface) {
+    return;
+  }
+  let timeoutHandle;
+  const timeoutToken = Symbol("prompt-timeout");
+  const response = await Promise.race([
+    promptInterface.question(`Why do you need to override this? ${displaySelector}
+`),
+    new Promise((resolveTimeout) => {
+      timeoutHandle = setTimeout(() => resolveTimeout(timeoutToken), promptTimeoutSeconds * 1000);
+    })
+  ]);
+  clearTimeout(timeoutHandle);
+  if (response === timeoutToken) {
+    console.warn(`Timed out after ${promptTimeoutSeconds} seconds; skipping ${displaySelector}.`);
+    promptInterface.close();
+    return;
+  }
+  return response.trim();
+}
+async function refreshReason(selector) {
+  const key = selectorKey(selector);
+  const recordIndex = reasonDocument.reasons.findIndex((record) => getRecordSelector(record) !== undefined && selectorKey(getRecordSelector(record)) === key);
+  const displaySelector = formatSelector(selector);
+  if (recordIndex < 0) {
+    console.error(`No saved reason exists for ${displaySelector}.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!promptInterface) {
+    console.error("Refreshing a reason requires an interactive terminal.");
+    process.exitCode = 1;
+    return;
+  }
+  const explanation = await askForExplanation(displaySelector);
+  if (explanation === undefined || explanation === "") {
+    return;
+  }
+  const record = reasonDocument.reasons[recordIndex];
+  if (explanation === record.reason) {
+    console.log(`Reason unchanged for ${displaySelector}.`);
+    return;
+  }
+  const updatedAt = new Date().toISOString();
+  const formattingOptions = {
+    formattingOptions: { insertSpaces: true, tabSize: 2 }
+  };
+  const edits = [
+    ...modify(reasonText, ["reasons", recordIndex, "reason"], explanation, formattingOptions),
+    ...modify(reasonText, ["reasons", recordIndex, "updatedAt"], updatedAt, formattingOptions)
+  ];
+  reasonText = applyEdits(reasonText, edits);
+  writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
+  console.log(`Refreshed reason for ${displaySelector}.`);
+}
+try {
+  if (process.argv[2] === "refresh") {
+    let selector;
+    try {
+      selector = JSON.parse(process.argv[3] ?? "");
+    } catch {
+      selector = undefined;
+    }
+    if (process.argv.length !== 4 || !Array.isArray(selector) || selector.length === 0 || !selector.every((segment) => typeof segment === "string")) {
+      console.error(`Usage: why-override refresh '["package", "nested-selector"]'`);
+      process.exitCode = 1;
+    } else {
+      await refreshReason(selector);
+    }
+  } else {
+    for (const selector of selectors) {
+      const key = selectorKey(selector);
+      const displaySelector = formatSelector(selector);
+      const reason = reasonsBySelector.get(key);
+      if (typeof reason === "string" && reason.trim() !== "") {
+        console.log(`Override ${displaySelector}: ${reason}`);
+        continue;
+      }
+      if (!promptInterface) {
+        continue;
+      }
+      const explanation = await askForExplanation(displaySelector);
+      if (explanation === undefined) {
+        break;
+      }
+      if (explanation === "") {
+        continue;
+      }
+      if (!reasonStoreWritable) {
+        warnDiagnostic(`cannot save a reason for ${displaySelector} because the reason store is malformed; leaving it unchanged.`);
+        continue;
+      }
+      const timestamp = new Date().toISOString();
+      const record = {
+        selector,
+        reason: explanation,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      const edits = modify(reasonText, ["reasons", reasonDocument.reasons.length], record, { formattingOptions: { insertSpaces: true, tabSize: 2 } });
+      reasonText = applyEdits(reasonText, edits);
+      writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
+      reasonDocument.reasons.push(record);
+      reasonsBySelector.set(key, explanation);
+    }
+  }
+} finally {
+  promptInterface?.close();
 }
