@@ -117,6 +117,17 @@ for (const command of ["install", "ci"]) {
         ),
       ).version;
       expect(installedVersion).toBe("7.0.0");
+
+      const demoCommand = await runNpm(fixtureRoot, [
+        "run",
+        "check-overrides",
+        "--workspace=@why-override/demo",
+      ]);
+      if (demoCommand.exitCode !== 0) {
+        throw new Error(demoCommand.output);
+      }
+      expect(demoCommand.exitCode).toBe(0);
+      expect(demoCommand.output).toContain(documentedReason);
     } finally {
       await rm(fixtureRoot, { recursive: true, force: true });
     }

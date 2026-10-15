@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun src/index.js"
+    "start": "bun src/index.js",
+    "check-overrides": "why-override"
   },
   "dependencies": {
     "is-odd": "^3.0.1"
+  },
+  "devDependencies": {
+    "why-override": "file:../../packages/enforcer"
   }
 }
