@@ -1359,6 +1359,21 @@ function selectorKey(selector) {
 function formatSelector(selector) {
   return selector.map((segment) => JSON.stringify(segment)).join(" > ");
 }
+var defaultPromptTimeoutSeconds = 10;
+function getPromptTimeoutSeconds() {
+  const environmentTimeout = process.env.OVERRIDE_TIMEOUT;
+  const projectTimeout = manifest.config?.["why-override"]?.timeout;
+  const configuredTimeout = environmentTimeout !== undefined ? environmentTimeout : projectTimeout;
+  if (configuredTimeout === undefined) {
+    return defaultPromptTimeoutSeconds;
+  }
+  const timeoutSeconds = Number(configuredTimeout);
+  if ((typeof configuredTimeout === "string" || typeof configuredTimeout === "number") && Number.isFinite(timeoutSeconds) && Number.isInteger(timeoutSeconds) && timeoutSeconds > 0) {
+    return timeoutSeconds;
+  }
+  console.warn(`Warning: invalid override prompt timeout ${JSON.stringify(configuredTimeout)}; using default ${defaultPromptTimeoutSeconds} seconds.`);
+  return defaultPromptTimeoutSeconds;
+}
 if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
   console.warn("Warning: override-reasons.jsonc is malformed; skipping saved reasons.");
   process.exit(0);
@@ -1368,6 +1383,7 @@ var reasonsBySelector = new Map(reasonDocument.reasons.map((record) => [
   record.reason
 ]));
 var selectors = collectOverrideSelectors(manifest.overrides);
+var promptTimeoutSeconds = getPromptTimeoutSeconds();
 var promptInterface = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
 try {
   for (const selector of selectors) {
@@ -1381,8 +1397,22 @@ try {
     if (!promptInterface) {
       continue;
     }
-    const explanation = (await promptInterface.question(`Why do you need to override this? ${displaySelector}
-`)).trim();
+    let timeoutHandle;
+    const timeoutToken = Symbol("prompt-timeout");
+    const response = await Promise.race([
+      promptInterface.question(`Why do you need to override this? ${displaySelector}
+`),
+      new Promise((resolveTimeout) => {
+        timeoutHandle = setTimeout(() => resolveTimeout(timeoutToken), promptTimeoutSeconds * 1000);
+      })
+    ]);
+    clearTimeout(timeoutHandle);
+    if (response === timeoutToken) {
+      console.warn(`Timed out after ${promptTimeoutSeconds} seconds; skipping ${displaySelector}.`);
+      promptInterface.close();
+      break;
+    }
+    const explanation = response.trim();
     if (explanation === "") {
       continue;
     }

@@ -11,7 +11,10 @@ const parseJSONC = createRequire(
 const documentedReason =
   "Keep is-odd's transitive is-number dependency on a known compatible release.";
 
-async function createFixture(overrides?: Record<string, unknown>) {
+async function createFixture(
+  overrides?: Record<string, unknown>,
+  promptTimeout?: unknown,
+) {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "why-override-lifecycle-"));
   try {
     const rootManifest = JSON.parse(
@@ -34,6 +37,12 @@ async function createFixture(overrides?: Record<string, unknown>) {
     };
     delete fixtureRootManifest.devDependencies;
     fixtureRootManifest.overrides = overrides ?? rootManifest.overrides;
+    if (promptTimeout !== undefined) {
+      fixtureRootManifest.config = {
+        ...fixtureRootManifest.config,
+        "why-override": { timeout: promptTimeout },
+      };
+    }
 
     await mkdir(join(packageDirectory, "dist"), { recursive: true });
     await mkdir(join(demoDirectory, "src"), { recursive: true });
@@ -72,9 +81,14 @@ async function createFixture(overrides?: Record<string, unknown>) {
   }
 }
 
-async function runNpm(fixtureRoot: string, args: string[]) {
+async function runNpm(
+  fixtureRoot: string,
+  args: string[],
+  env: Record<string, string> = {},
+) {
   const child = Bun.spawn(["npm", ...args], {
     cwd: fixtureRoot,
+    env: { ...process.env, ...env },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -105,29 +119,43 @@ async function runEnforcer(fixtureRoot: string) {
 async function runInteractiveNpm(
   fixtureRoot: string,
   args: string[],
-  answer: string,
+  answer?: string,
+  env: Record<string, string> = {},
+  safetyTimeoutMs = 5000,
 ) {
   let output = "";
   let answered = false;
+  let prompted = false;
   const decoder = new TextDecoder();
   const child = Bun.spawn(["npm", ...args], {
     cwd: fixtureRoot,
+    env: { ...process.env, ...env },
     terminal: {
       cols: 100,
       rows: 30,
       data(terminal, data) {
         output += decoder.decode(data, { stream: true });
-        if (!answered && output.includes("Why do you need to override this?")) {
-          answered = true;
-          terminal.write(`${answer}\r`);
+        if (!prompted && output.includes("Why do you need to override this?")) {
+          prompted = true;
+          if (answer !== undefined) {
+            answered = true;
+            terminal.write(`${answer}\r`);
+          }
         }
       },
     },
   });
+  const safetyTimer = setTimeout(() => child.kill(), safetyTimeoutMs);
   const exitCode = await child.exited;
+  clearTimeout(safetyTimer);
   child.terminal.close();
 
-  return { output: `${output}${decoder.decode()}`, exitCode, answered };
+  return {
+    output: `${output}${decoder.decode()}`,
+    exitCode,
+    answered,
+    prompted,
+  };
 }
 
 test("interactive npm install saves a reason and displays it next time", async () => {
@@ -211,7 +239,7 @@ test("empty interactive answer leaves the reason store unchanged", async () => {
 });
 
 test("non-TTY npm install skips undocumented reasons", async () => {
-  const fixtureRoot = await createFixture();
+  const fixtureRoot = await createFixture(undefined, 120);
 
   try {
     const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
@@ -222,17 +250,129 @@ test("non-TTY npm install skips undocumented reasons", async () => {
     );
     await writeFile(reasonStorePath, emptyReasonStore);
 
-    const result = await runNpm(fixtureRoot, [
+    const start = Date.now();
+    const result = await runNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      { OVERRIDE_TIMEOUT: "600" },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(Date.now() - start).toBeLessThan(5000);
+    expect(result.output).not.toContain("Why do you need to override this?");
+    expect(
+      JSON.stringify(JSON.parse(await readFile(reasonStorePath, "utf8"))),
+    ).toBe(JSON.stringify(JSON.parse(emptyReasonStore)));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("interactive prompt uses env timeout before project config", async () => {
+  const fixtureRoot = await createFixture(undefined, 5);
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const emptyReasonStore = JSON.stringify(
+      { version: 1, reasons: [] },
+      null,
+      2,
+    );
+    await writeFile(reasonStorePath, emptyReasonStore);
+    const start = Date.now();
+
+    const result = await runInteractiveNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      undefined,
+      { OVERRIDE_TIMEOUT: "1" },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(true);
+    expect(result.output).toContain("Timed out after 1 seconds");
+    expect(Date.now() - start).toBeGreaterThanOrEqual(800);
+    expect(Date.now() - start).toBeLessThan(5000);
+    expect(
+      JSON.stringify(JSON.parse(await readFile(reasonStorePath, "utf8"))),
+    ).toBe(JSON.stringify(JSON.parse(emptyReasonStore)));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("interactive prompt uses project timeout when env is absent", async () => {
+  const fixtureRoot = await createFixture(undefined, 1);
+
+  try {
+    await writeFile(
+      join(fixtureRoot, "override-reasons.jsonc"),
+      JSON.stringify({ version: 1, reasons: [] }, null, 2),
+    );
+    const result = await runInteractiveNpm(fixtureRoot, [
       "install",
       "--no-audit",
       "--no-fund",
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).not.toContain("Why do you need to override this?");
+    expect(result.prompted).toBe(true);
+    expect(result.output).toContain("Timed out after 1 seconds");
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("invalid env timeout warns and falls back to ten seconds", async () => {
+  const fixtureRoot = await createFixture(undefined, 1);
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const emptyReasonStore = JSON.stringify(
+      { version: 1, reasons: [] },
+      null,
+      2,
+    );
+    await writeFile(reasonStorePath, emptyReasonStore);
+    const start = Date.now();
+    const result = await runInteractiveNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      undefined,
+      { OVERRIDE_TIMEOUT: "0" },
+      15000,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("invalid override prompt timeout");
+    expect(result.output).toContain("Timed out after 10 seconds");
+    expect(Date.now() - start).toBeGreaterThanOrEqual(9500);
+    expect(Date.now() - start).toBeLessThan(15000);
     expect(
       JSON.stringify(JSON.parse(await readFile(reasonStorePath, "utf8"))),
     ).toBe(JSON.stringify(JSON.parse(emptyReasonStore)));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("invalid project timeout warns and falls back to ten seconds", async () => {
+  const fixtureRoot = await createFixture(undefined, 1.5);
+
+  try {
+    await writeFile(
+      join(fixtureRoot, "override-reasons.jsonc"),
+      JSON.stringify({ version: 1, reasons: [] }, null, 2),
+    );
+    const result = await runInteractiveNpm(
+      fixtureRoot,
+      ["install", "--no-audit", "--no-fund"],
+      "Valid reason.",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("invalid override prompt timeout");
+    expect(result.answered).toBe(true);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
