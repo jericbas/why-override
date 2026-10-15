@@ -1337,23 +1337,51 @@ var parseErrors = [];
 var reasonDocument = parse2(reasonText, parseErrors, {
   allowTrailingComma: true
 });
+function collectOverrideSelectors(overrides, parentPath = []) {
+  const selectors = [];
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    const selector = [...parentPath, key];
+    if (key.includes("*")) {
+      console.warn(`Warning: unsupported wildcard override selector ${JSON.stringify(selector)}; skipping.`);
+      continue;
+    }
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      selectors.push(...collectOverrideSelectors(value, selector));
+    } else if (typeof value === "string") {
+      selectors.push(selector);
+    }
+  }
+  return selectors;
+}
+function selectorKey(selector) {
+  return JSON.stringify(selector);
+}
+function formatSelector(selector) {
+  return selector.map((segment) => JSON.stringify(segment)).join(" > ");
+}
 if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
   console.warn("Warning: override-reasons.jsonc is malformed; skipping saved reasons.");
   process.exit(0);
 }
-var reasonsBySelector = new Map(reasonDocument.reasons.map((record) => [record.selector, record.reason]));
+var reasonsBySelector = new Map(reasonDocument.reasons.map((record) => [
+  selectorKey(Array.isArray(record.selector) ? record.selector : [record.selector]),
+  record.reason
+]));
+var selectors = collectOverrideSelectors(manifest.overrides);
 var promptInterface = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
 try {
-  for (const selector of Object.keys(manifest.overrides ?? {})) {
-    const reason = reasonsBySelector.get(selector);
+  for (const selector of selectors) {
+    const key = selectorKey(selector);
+    const displaySelector = formatSelector(selector);
+    const reason = reasonsBySelector.get(key);
     if (typeof reason === "string" && reason.trim() !== "") {
-      console.log(`Override ${selector}: ${reason}`);
+      console.log(`Override ${displaySelector}: ${reason}`);
       continue;
     }
     if (!promptInterface) {
       continue;
     }
-    const explanation = (await promptInterface.question(`Why do you need to override this? ${selector}
+    const explanation = (await promptInterface.question(`Why do you need to override this? ${displaySelector}
 `)).trim();
     if (explanation === "") {
       continue;
@@ -1369,7 +1397,7 @@ try {
     reasonText = applyEdits(reasonText, edits);
     writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
     reasonDocument.reasons.push(record);
-    reasonsBySelector.set(selector, explanation);
+    reasonsBySelector.set(key, explanation);
   }
 } finally {
   promptInterface?.close();
