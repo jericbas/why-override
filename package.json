@@ -1,0 +1,24 @@
+{
+  "name": "why-override",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "preinstall": "node packages/enforcer/dist/cli.js",
+    "build": "bun build packages/enforcer/src/cli.js --target=node --outfile=packages/enforcer/dist/cli.js",
+    "test": "bun test",
+    "lint": "biome check apps packages/enforcer/src packages/enforcer/package.json tests package.json biome.json override-reasons.jsonc",
+    "format": "biome format --write apps packages/enforcer/src packages/enforcer/package.json tests package.json biome.json override-reasons.jsonc",
+    "demo": "bun run --filter @why-override/demo start"
+  },
+  "overrides": {
+    "is-number": "7.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0"
+  }
+}
