@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // packages/why-override/src/cli.js
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -1330,14 +1330,48 @@ function applyEdits(text, edits) {
 }
 
 // packages/why-override/src/cli.js
-var workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+function findWorkspaceRoot() {
+  let currentDir = resolve(process.cwd());
+  let nearestManifestDir;
+  let workspaceRootDir;
+  while (true) {
+    const manifestPath = resolve(currentDir, "package.json");
+    if (existsSync(manifestPath)) {
+      nearestManifestDir ??= currentDir;
+      try {
+        const parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (parsed?.workspaces !== undefined) {
+          workspaceRootDir = currentDir;
+        }
+      } catch {}
+    }
+    const parentDir = dirname(currentDir);
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+  return workspaceRootDir ?? nearestManifestDir ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+}
+var workspaceRoot = findWorkspaceRoot();
 var manifest = JSON.parse(readFileSync(resolve(workspaceRoot, "package.json"), "utf8"));
-var reasonText = readFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), "utf8");
+var reasonStorePath = resolve(workspaceRoot, "override-reasons.jsonc");
+var reasonText = "";
+var reasonStoreMissing = false;
+try {
+  reasonText = readFileSync(reasonStorePath, "utf8");
+} catch (error) {
+  if (error?.code === "ENOENT") {
+    reasonStoreMissing = true;
+  } else {
+    throw error;
+  }
+}
 var parseErrors = [];
-var reasonDocument = parse2(reasonText, parseErrors, {
+var reasonDocument = reasonStoreMissing ? undefined : parse2(reasonText, parseErrors, {
   allowTrailingComma: true
 });
-var reasonStoreWritable = true;
+var reasonStoreWritable = !reasonStoreMissing;
 function collectOverrideSelectors(overrides, parentPath = []) {
   const selectors = [];
   for (const [key, value] of Object.entries(overrides ?? {})) {
@@ -1378,6 +1412,10 @@ function getRecordSelector(record) {
 function isUtcTimestamp(value) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value;
 }
+function isValidReasonRecord(record) {
+  const selector = getRecordSelector(record);
+  return selector !== undefined && typeof record.reason === "string" && record.reason.trim() !== "" && isUtcTimestamp(record.createdAt) && isUtcTimestamp(record.updatedAt);
+}
 var defaultPromptTimeoutSeconds = 10;
 function getPromptTimeoutSeconds() {
   const environmentTimeout = process.env.OVERRIDE_TIMEOUT;
@@ -1393,7 +1431,11 @@ function getPromptTimeoutSeconds() {
   console.warn(`Warning: invalid override prompt timeout ${JSON.stringify(configuredTimeout)}; using default ${defaultPromptTimeoutSeconds} seconds.`);
   return defaultPromptTimeoutSeconds;
 }
-if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
+if (reasonStoreMissing) {
+  warnDiagnostic("override-reasons.jsonc is missing; saved reasons cannot be read or updated.");
+  reasonDocument = { version: 1, reasons: [] };
+  reasonStoreWritable = false;
+} else if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
   warnDiagnostic("override-reasons.jsonc is malformed; saved reasons cannot be read or updated.");
   reasonDocument = { version: 1, reasons: [] };
   reasonStoreWritable = false;
@@ -1405,7 +1447,7 @@ var minimumReviewAgeMilliseconds = 30 * 24 * 60 * 60 * 1000;
 for (const record of reasonDocument.reasons) {
   const selector = getRecordSelector(record);
   const displaySelector = selector ? formatSelector(selector) : "unknown selector";
-  if (!selector || typeof record.reason !== "string" || record.reason.trim() === "" || !isUtcTimestamp(record.createdAt) || !isUtcTimestamp(record.updatedAt)) {
+  if (!isValidReasonRecord(record)) {
     warnDiagnostic(`malformed override reason record for ${displaySelector}; treating it as undocumented and preserving the record.`);
     continue;
   }
@@ -1427,9 +1469,10 @@ async function askForExplanation(displaySelector) {
   }
   let timeoutHandle;
   const timeoutToken = Symbol("prompt-timeout");
+  const closeToken = Symbol("prompt-close");
   const response = await Promise.race([
     promptInterface.question(`Why do you need to override this? ${displaySelector}
-`),
+`).catch(() => closeToken),
     new Promise((resolveTimeout) => {
       timeoutHandle = setTimeout(() => resolveTimeout(timeoutToken), promptTimeoutSeconds * 1000);
     })
@@ -1440,11 +1483,14 @@ async function askForExplanation(displaySelector) {
     promptInterface.close();
     return;
   }
+  if (response === closeToken) {
+    return;
+  }
   return response.trim();
 }
 async function refreshReason(selector) {
   const key = selectorKey(selector);
-  const recordIndex = reasonDocument.reasons.findIndex((record) => getRecordSelector(record) !== undefined && selectorKey(getRecordSelector(record)) === key);
+  const recordIndex = reasonDocument.reasons.findLastIndex((record) => isValidReasonRecord(record) && selectorKey(getRecordSelector(record)) === key);
   const displaySelector = formatSelector(selector);
   if (recordIndex < 0) {
     console.error(`No saved reason exists for ${displaySelector}.`);
@@ -1474,7 +1520,7 @@ async function refreshReason(selector) {
     ...modify(reasonText, ["reasons", recordIndex, "updatedAt"], updatedAt, formattingOptions)
   ];
   reasonText = applyEdits(reasonText, edits);
-  writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
+  writeFileSync(reasonStorePath, reasonText);
   console.log(`Refreshed reason for ${displaySelector}.`);
 }
 try {
@@ -1485,7 +1531,7 @@ try {
     } catch {
       selector = undefined;
     }
-    if (process.argv.length !== 4 || !Array.isArray(selector) || selector.length === 0 || !selector.every((segment) => typeof segment === "string")) {
+    if (process.argv.length !== 4 || !Array.isArray(selector) || selector.length === 0 || !selector.every((segment) => typeof segment === "string" && segment.length > 0)) {
       console.error(`Usage: why-override refresh '["package", "nested-selector"]'`);
       process.exitCode = 1;
     } else {
@@ -1511,7 +1557,7 @@ try {
         continue;
       }
       if (!reasonStoreWritable) {
-        warnDiagnostic(`cannot save a reason for ${displaySelector} because the reason store is malformed; leaving it unchanged.`);
+        warnDiagnostic(`cannot save a reason for ${displaySelector} because the reason store is ${reasonStoreMissing ? "missing" : "malformed"}; leaving it unchanged.`);
         continue;
       }
       const timestamp = new Date().toISOString();
@@ -1523,7 +1569,7 @@ try {
       };
       const edits = modify(reasonText, ["reasons", reasonDocument.reasons.length], record, { formattingOptions: { insertSpaces: true, tabSize: 2 } });
       reasonText = applyEdits(reasonText, edits);
-      writeFileSync(resolve(workspaceRoot, "override-reasons.jsonc"), reasonText);
+      writeFileSync(reasonStorePath, reasonText);
       reasonDocument.reasons.push(record);
       reasonsBySelector.set(key, explanation);
     }
