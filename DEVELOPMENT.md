@@ -92,6 +92,4 @@ This checks that the tarball includes the package README, license, manifest, and
 
 ## Repository guidance
 
-- GitHub Issues are the source of tickets and specs; workflow conventions are in [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
-- Glossary and ADR consumption conventions are in [docs/agents/domain.md](docs/agents/domain.md). Create domain documents when vocabulary or decisions need to be recorded, not as placeholders.
-- [AGENTS.md](AGENTS.md) points coding agents to these repository-specific guides.
+- GitHub Issues are the source of tickets and specs.

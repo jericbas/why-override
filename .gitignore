@@ -81,6 +81,8 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+# The CLI bundle is committed: root `preinstall` runs it before any build is possible.
+!packages/why-override/dist/
 .output
 
 # Gatsby files
@@ -147,3 +149,6 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Bun is the package manager for this repo; don't track an npm lockfile
+/package-lock.json
