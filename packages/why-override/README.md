@@ -131,7 +131,11 @@ Documented reasons are displayed in a formatted, color-coded table showing the p
 └─────────────┴──────────┴───────────┴─────────────────────┴──────────────────────┘
 ```
 
-For undocumented selectors, an interactive terminal asks `Why do you need to override this? <selector> (auto-skips in 10s)` with a real-time countdown. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason.
+For undocumented selectors, an interactive terminal asks `Why do you need to override this? <selector> (auto-skips in 10s)` with a real-time countdown. Whenever you type input, the countdown timer resets automatically using a debounced handler so you are never cut off mid-sentence.
+
+If any reasons have already been entered in the project, the prompt displays them as a numbered list (`1..N`). You can enter a number to reuse an existing rationale or type a new one.
+
+A reminder note is also displayed directing you to `.override-reasons.jsonc` if you want to inspect or edit reasons manually. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason.
 
 ### Running with package managers
 

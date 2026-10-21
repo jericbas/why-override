@@ -1193,3 +1193,122 @@ for (const command of ["install", "ci"]) {
     }
   });
 }
+
+test("interactive prompt allows selecting an existing reason by number and displays the manual edit note", async () => {
+  const fixtureRoot = await createFixture({
+    "is-odd": "3.0.1",
+    "is-number": "7.0.0",
+  });
+
+  try {
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const existingReason = "Shared upstream compatibility workaround.";
+    const timestamp = new Date().toISOString();
+    await writeFile(
+      reasonStorePath,
+      JSON.stringify(
+        {
+          version: 1,
+          reasons: [
+            {
+              selector: ["is-odd"],
+              reason: existingReason,
+              target: "3.0.1",
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = await runInteractiveEnforcer(fixtureRoot, [], "1");
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(true);
+    expect(result.output).toContain("Existing reasons:");
+    expect(result.output).toContain(`1) ${existingReason}`);
+    expect(result.output).toContain(
+      "Note: please check .override-reasons.jsonc if you want to check and edit reasons manually.",
+    );
+    expect(result.output).toContain(`Selected: ${existingReason}`);
+
+    const store = parseJSONC(await readFile(reasonStorePath, "utf8"));
+    expect(store.reasons).toHaveLength(2);
+    expect(store.reasons[1]).toMatchObject({
+      selector: ["is-number"],
+      reason: existingReason,
+      target: "7.0.0",
+    });
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("typing input resets countdown timer and avoids premature timeout", async () => {
+  const fixtureRoot = await createFixture(undefined, 2);
+
+  try {
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    await writeFile(
+      reasonStorePath,
+      JSON.stringify({ version: 1, reasons: [] }, null, 2),
+    );
+
+    let output = "";
+    let prompted = false;
+    const decoder = new TextDecoder();
+    const child = Bun.spawn(["node", "packages/why-override/dist/cli.js"], {
+      cwd: fixtureRoot,
+      env: { ...process.env, OVERRIDE_TIMEOUT: "2" },
+      terminal: {
+        cols: 100,
+        rows: 30,
+        data(terminal, data) {
+          output += decoder.decode(data, { stream: true });
+          if (
+            !prompted &&
+            output.includes("Why do you need to override this?")
+          ) {
+            prompted = true;
+            setTimeout(() => {
+              terminal.write("Typing ");
+              setTimeout(() => {
+                terminal.write("debounced answer\r");
+              }, 1200);
+            }, 1200);
+          }
+        },
+      },
+    });
+
+    const safetyTimer = setTimeout(() => child.kill(), 10000);
+    const exitCode = await child.exited;
+    clearTimeout(safetyTimer);
+    child.terminal.close();
+
+    expect(exitCode).toBe(0);
+    expect(output).not.toContain("Timed out after 2 seconds");
+
+    const store = parseJSONC(await readFile(reasonStorePath, "utf8"));
+    expect(store.reasons).toHaveLength(1);
+    expect(store.reasons[0].reason).toBe("Typing debounced answer");
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("enforcer displays note pointing to .override-reasons.jsonc", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const result = await runEnforcer(fixtureRoot);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain(
+      "Note: please check .override-reasons.jsonc if you want to check and edit reasons manually.",
+    );
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
