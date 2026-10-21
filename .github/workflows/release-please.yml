@@ -39,7 +39,7 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - run: bun install --frozen-lockfile
+      - run: bun install
         if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
 
       - run: bun run build
