@@ -1,8 +1,13 @@
 # why-override
 
-`why-override` is a CLI that displays and maintains explanations for npm override selectors. Override declarations stay in your project's root `package.json`; explanations live in a tracked root `.override-reasons.jsonc` file (with backwards-compatible fallback to `override-reasons.jsonc`).
+[![npm](https://img.shields.io/npm/v/why-override)](https://www.npmjs.com/package/why-override)
+[![downloads](https://img.shields.io/npm/dt/why-override)](https://www.npmjs.com/package/why-override)
+[![size](https://img.shields.io/bundlephobia/minzip/why-override)](https://bundlephobia.com/package/why-override)
+[![vulns](https://security.snyk.io/badges/npm:why-override.svg)](https://security.snyk.io/package/npm/why-override)
 
-> **Publication status:** `why-override` is prepared as an npm package, but has not yet been published to the npm registry. The installation command below will work once it is published.
+[![deps](https://nodei.co/npm/why-override.png)](https://www.npmjs.com/package/why-override)
+
+`why-override` is a CLI that displays and maintains explanations for npm override selectors. Override declarations stay in your project's root `package.json`; explanations live in a tracked root `.override-reasons.jsonc` file (with backwards-compatible fallback to `override-reasons.jsonc`).
 
 ## Install
 
