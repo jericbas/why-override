@@ -1,0 +1,29 @@
+{
+  "name": "why-override",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "preinstall": "node packages/why-override/dist/cli.js",
+    "build": "bun build packages/why-override/src/cli.js --target=node --outfile=packages/why-override/dist/cli.js",
+    "test": "bun test --timeout=20000",
+    "lint": "biome check apps packages/why-override/src packages/why-override/package.json tests package.json biome.json .override-reasons.jsonc",
+    "format": "biome format --write apps packages/why-override/src packages/why-override/package.json tests package.json biome.json .override-reasons.jsonc",
+    "demo": "bun run --filter @why-override/demo start && bun run --filter @why-override/demo check-overrides",
+    "registry:start": "docker run --rm -p 4873:4873 --name local-registry verdaccio/verdaccio",
+    "publish:local": "npm publish --workspace=packages/why-override --registry http://localhost:4873/"
+  },
+  "overrides": {
+    "is-number": "7.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0"
+  },
+  "dependencies": {
+    "@why-override/demo": "^0.1.0"
+  }
+}

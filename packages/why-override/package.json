@@ -1,0 +1,21 @@
+{
+  "name": "why-override",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Document and review npm dependency overrides.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jericbas/why-override.git",
+    "directory": "packages/why-override"
+  },
+  "bin": {
+    "why-override": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "jsonc-parser": "^3.3.1"
+  }
+}
