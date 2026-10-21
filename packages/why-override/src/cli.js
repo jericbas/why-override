@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { clearLine, cursorTo, moveCursor } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -40,11 +40,24 @@ function findWorkspaceRoot() {
   );
 }
 
+function findReasonStorePath(root) {
+  const dotPath = resolve(root, ".override-reasons.jsonc");
+  if (existsSync(dotPath)) {
+    return dotPath;
+  }
+  const regularPath = resolve(root, "override-reasons.jsonc");
+  if (existsSync(regularPath)) {
+    return regularPath;
+  }
+  return dotPath;
+}
+
 const workspaceRoot = findWorkspaceRoot();
 const manifest = JSON.parse(
   readFileSync(resolve(workspaceRoot, "package.json"), "utf8"),
 );
-const reasonStorePath = resolve(workspaceRoot, "override-reasons.jsonc");
+const reasonStorePath = findReasonStorePath(workspaceRoot);
+const reasonStoreFilename = basename(reasonStorePath);
 let reasonText = "";
 let reasonStoreMissing = false;
 try {
@@ -353,14 +366,14 @@ function getPromptTimeoutSeconds() {
 
 if (reasonStoreMissing) {
   warnDiagnostic(
-    "override-reasons.jsonc is missing; it will be created when you save a reason.",
+    `${reasonStoreFilename} is missing; it will be created when you save a reason.`,
   );
   reasonDocument = { version: 1, reasons: [] };
   // Start from an empty store; the file is only written once a reason is saved.
   reasonText = `${JSON.stringify(reasonDocument, null, 2)}\n`;
 } else if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
   warnDiagnostic(
-    "override-reasons.jsonc is malformed; saved reasons cannot be read or updated.",
+    `${reasonStoreFilename} is malformed; saved reasons cannot be read or updated.`,
   );
   reasonDocument = { version: 1, reasons: [] };
   reasonStoreWritable = false;
@@ -520,29 +533,38 @@ async function refreshReason(selector) {
 
 try {
   if (process.argv[2] === "refresh") {
-    let selector;
-    try {
-      selector = JSON.parse(process.argv[3] ?? "");
-    } catch {
-      selector = undefined;
-    }
-
-    if (
-      process.argv.length !== 4 ||
-      !Array.isArray(selector) ||
-      selector.length === 0 ||
-      !selector.every(
-        (segment) => typeof segment === "string" && segment.length > 0,
-      )
-    ) {
-      console.error(
-        'Usage: why-override refresh \'["package", "nested-selector"]\'',
-      );
-      process.exitCode = 1;
+    if (process.argv[3] === "--all" || process.argv[3] === "-a") {
+      for (const selector of selectors) {
+        await refreshReason(selector);
+      }
     } else {
-      await refreshReason(selector);
+      let selector;
+      try {
+        selector = JSON.parse(process.argv[3] ?? "");
+      } catch {
+        selector = undefined;
+      }
+
+      if (
+        process.argv.length !== 4 ||
+        !Array.isArray(selector) ||
+        selector.length === 0 ||
+        !selector.every(
+          (segment) => typeof segment === "string" && segment.length > 0,
+        )
+      ) {
+        console.error(
+          'Usage: why-override refresh \'["package", "nested-selector"]\' or why-override refresh --all',
+        );
+        process.exitCode = 1;
+      } else {
+        await refreshReason(selector);
+      }
     }
   } else {
+    const isReenter =
+      process.argv.includes("--reenter") || process.argv.includes("--re-enter");
+
     printOverrideTable(
       selectors
         .map((selector) => ({
@@ -559,6 +581,9 @@ try {
       const displaySelector = formatSelector(selector);
       const reason = reasonsBySelector.get(key);
       if (typeof reason === "string" && reason.trim() !== "") {
+        if (isReenter) {
+          await refreshReason(selector);
+        }
         continue;
       }
 

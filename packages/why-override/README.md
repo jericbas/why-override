@@ -1,6 +1,6 @@
 # why-override
 
-`why-override` is a CLI that displays and maintains explanations for npm override selectors. Override declarations stay in your project's root `package.json`; explanations live in a tracked root `override-reasons.jsonc` file.
+`why-override` is a CLI that displays and maintains explanations for npm override selectors. Override declarations stay in your project's root `package.json`; explanations live in a tracked root `.override-reasons.jsonc` file (with backwards-compatible fallback to `override-reasons.jsonc`).
 
 > **Publication status:** `why-override` is prepared as an npm package, but has not yet been published to the npm registry. The installation command below will work once it is published.
 
@@ -26,7 +26,7 @@ Keep the actual override declarations in the project root `package.json`:
 }
 ```
 
-Create `override-reasons.jsonc` in the same directory. Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
+Create `.override-reasons.jsonc` in the same directory. Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
 
 ```jsonc
 {
@@ -42,7 +42,28 @@ Create `override-reasons.jsonc` in the same directory. Each record identifies an
 }
 ```
 
-Nested selectors use one array element per key, including the special `.` selector. For example, `parent > .` is stored as `["parent", "."]`. Replacement targets such as npm aliases, Git references, and local paths are not part of selector identity.
+Nested selectors use one array element per key, including sub-overrides and the special `.` selector. For example, if you declare a nested override:
+
+```json
+{
+  "overrides": {
+    "packageA": {
+      "packageB": "1.2.2"
+    }
+  }
+}
+```
+
+The selector path is stored in `.override-reasons.jsonc` as `["packageA", "packageB"]`:
+
+```jsonc
+{
+  "selector": ["packageA", "packageB"],
+  "reason": "Compatibility patch for packageB when used inside packageA."
+}
+```
+
+Similarly, `parent > .` is stored as `["parent", "."]`. In the status table, nested selectors are formatted with arrows (e.g. `"packageA" > "packageB"`). Replacement targets such as npm aliases, Git references, and local paths are not part of selector identity.
 
 Records may also include two optional fields:
 
@@ -80,7 +101,7 @@ If the root already has a `preinstall` command, keep it and append `why-override
 }
 ```
 
-The tool does not edit the consumer's package manifest. If `override-reasons.jsonc` does not yet exist, it is created automatically when the first interactive reason is saved. Save and commit both files with your dependency changes.
+The tool does not edit the consumer's package manifest. If `.override-reasons.jsonc` does not yet exist, it is created automatically when the first interactive reason is saved (legacy `override-reasons.jsonc` is also recognized). Save and commit both files with your dependency changes.
 
 ## Use
 
@@ -107,10 +128,42 @@ Documented reasons are displayed in a formatted, color-coded table showing the p
 
 For undocumented selectors, an interactive terminal asks `Why do you need to override this? <selector> (auto-skips in 10s)` with a real-time countdown. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason.
 
-Refresh an existing reason from an interactive terminal by passing its exact selector path as a JSON array:
+### Running with package managers
+
+You can invoke `why-override` directly using any major package manager:
+
+```sh
+# npm
+npx why-override
+
+# yarn
+yarn why-override
+
+# pnpm
+pnpm why-override
+
+# bun
+bun why-override
+```
+
+### Re-entering or updating reasons
+
+To re-enter or update explanations across all overrides interactively, pass `--reenter`:
+
+```sh
+npx why-override --reenter
+# or:
+npx why-override refresh --all
+```
+
+Pressing Enter on an existing override without entering a new reason keeps the current reason unchanged.
+
+To refresh a single specific override reason, pass its selector path as a JSON array:
 
 ```sh
 npx why-override refresh '["is-number"]'
+# nested override:
+npx why-override refresh '["packageA", "packageB"]'
 npx why-override refresh '["parent", "."]'
 ```
 
