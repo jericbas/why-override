@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "start": "bun src/index.js",
-    "check-overrides": "why-override"
+    "check-overrides": "why-override",
+    "postinstall": "why-override"
   },
   "dependencies": {
     "is-odd": "^3.0.1"
   },
   "devDependencies": {
     "why-override": "file:../../packages/why-override"
+  },
+  "overrides": {
+    "is-number": "7.0.0"
   }
 }

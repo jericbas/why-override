@@ -116,6 +116,43 @@ async function runEnforcer(fixtureRoot: string) {
   return { output: `${stdout}\n${stderr}`, exitCode };
 }
 
+async function runInteractiveEnforcer(
+  fixtureRoot: string,
+  args: string[],
+  answer: string,
+  safetyTimeoutMs = 5000,
+) {
+  let output = "";
+  let prompted = false;
+  const decoder = new TextDecoder();
+  const child = Bun.spawn(
+    ["node", "packages/why-override/dist/cli.js", ...args],
+    {
+      cwd: fixtureRoot,
+      terminal: {
+        cols: 100,
+        rows: 30,
+        data(terminal, data) {
+          output += decoder.decode(data, { stream: true });
+          if (
+            !prompted &&
+            output.includes("Why do you need to override this?")
+          ) {
+            prompted = true;
+            terminal.write(`${answer}\r`);
+          }
+        },
+      },
+    },
+  );
+  const safetyTimer = setTimeout(() => child.kill(), safetyTimeoutMs);
+  const exitCode = await child.exited;
+  clearTimeout(safetyTimer);
+  child.terminal.close();
+
+  return { output: `${output}${decoder.decode()}`, exitCode, prompted };
+}
+
 async function runInteractiveNpm(
   fixtureRoot: string,
   args: string[],
@@ -187,6 +224,7 @@ test("interactive npm install saves a reason and displays it next time", async (
     expect(reasonStore.reasons[0]).toMatchObject({
       selector: ["is-number"],
       reason: "Needed to keep the demo compatible.",
+      target: "7.0.0",
     });
     expect(reasonStore.reasons[0].createdAt).toBe(
       reasonStore.reasons[0].updatedAt,
@@ -498,6 +536,142 @@ test("changing only an override target leaves its reason record unchanged", asyn
   }
 });
 
+test("recorded target drift warns without changing the reason store", async () => {
+  const fixtureRoot = await createFixture({ "is-number": "7.0.1" });
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const originalReasonStore = JSON.stringify(
+      {
+        version: 1,
+        reasons: [
+          {
+            selector: ["is-number"],
+            reason: "Pinned rationale.",
+            target: "7.0.0",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      },
+      null,
+      2,
+    );
+    await writeFile(reasonStorePath, originalReasonStore);
+
+    const result = await runEnforcer(fixtureRoot);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Pinned rationale.");
+    expect(result.output).toContain(
+      'override target for "is-number" changed from "7.0.0" to "7.0.1"',
+    );
+    expect(await readFile(reasonStorePath, "utf8")).toBe(originalReasonStore);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("refresh with an unchanged reason records the current target", async () => {
+  const fixtureRoot = await createFixture({ "is-number": "7.0.1" });
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const createdAt = "2020-01-01T00:00:00.000Z";
+    const originalUpdatedAt = "2021-01-01T00:00:00.000Z";
+    await writeFile(
+      reasonStorePath,
+      JSON.stringify(
+        {
+          version: 1,
+          reasons: [
+            {
+              selector: ["is-number"],
+              reason: "Pinned rationale.",
+              target: "7.0.0",
+              createdAt,
+              updatedAt: originalUpdatedAt,
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = await runInteractiveEnforcer(
+      fixtureRoot,
+      ["refresh", '["is-number"]'],
+      "Pinned rationale.",
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(true);
+
+    const [record] = parseJSONC(
+      await readFile(reasonStorePath, "utf8"),
+    ).reasons;
+    expect(record).toMatchObject({
+      reason: "Pinned rationale.",
+      target: "7.0.1",
+      createdAt,
+    });
+    expect(record.updatedAt).not.toBe(originalUpdatedAt);
+
+    const after = await runEnforcer(fixtureRoot);
+    expect(after.output).not.toContain("override target for");
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("optional workspaces are displayed and invalid values are malformed", async () => {
+  const fixtureRoot = await createFixture({
+    "is-number": "7.0.0",
+    "is-odd": "3.0.1",
+  });
+
+  try {
+    const timestamp = new Date().toISOString();
+    await writeFile(
+      join(fixtureRoot, "override-reasons.jsonc"),
+      JSON.stringify(
+        {
+          version: 1,
+          reasons: [
+            {
+              selector: ["is-number"],
+              reason: "Shared rationale.",
+              workspaces: ["apps/web", "apps/api"],
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+            {
+              selector: ["is-odd"],
+              reason: "Invalid workspaces rationale.",
+              workspaces: "apps/web",
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = await runEnforcer(fixtureRoot);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain(
+      'Override "is-number" [workspaces: apps/web, apps/api]: Shared rationale.',
+    );
+    expect(result.output).toContain(
+      'malformed override reason record for "is-odd"',
+    );
+    expect(result.output).not.toContain("Invalid workspaces rationale.");
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("aging documented reasons does not trigger an install prompt", async () => {
   const fixtureRoot = await createFixture();
 
@@ -644,6 +818,34 @@ test("missing reason store warns without blocking install or creating the file",
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("override-reasons.jsonc is missing");
     await expect(readFile(reasonStorePath, "utf8")).rejects.toThrow();
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("missing reason store is created when an interactive reason is saved", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    await rm(reasonStorePath);
+
+    const result = await runInteractiveEnforcer(
+      fixtureRoot,
+      [],
+      "Created from a missing store.",
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(true);
+    expect(result.output).not.toContain("cannot save a reason");
+
+    const reasonStore = parseJSONC(await readFile(reasonStorePath, "utf8"));
+    expect(reasonStore.version).toBe(1);
+    expect(reasonStore.reasons).toHaveLength(1);
+    expect(reasonStore.reasons[0]).toMatchObject({
+      selector: ["is-number"],
+      reason: "Created from a missing store.",
+    });
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }

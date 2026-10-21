@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 // packages/why-override/src/cli.js
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { clearLine, cursorTo, moveCursor } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
@@ -1371,7 +1372,7 @@ var parseErrors = [];
 var reasonDocument = reasonStoreMissing ? undefined : parse2(reasonText, parseErrors, {
   allowTrailingComma: true
 });
-var reasonStoreWritable = !reasonStoreMissing;
+var reasonStoreWritable = true;
 function collectOverrideSelectors(overrides, parentPath = []) {
   const selectors = [];
   for (const [key, value] of Object.entries(overrides ?? {})) {
@@ -1393,6 +1394,123 @@ function selectorKey(selector) {
 }
 function formatSelector(selector) {
   return selector.map((segment) => JSON.stringify(segment)).join(" > ");
+}
+var useColor = process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
+var ansi = (code) => (text) => useColor ? `\x1B[${code}m${text}\x1B[0m` : text;
+var color = {
+  bold: ansi("1"),
+  dim: ansi("2"),
+  cyan: ansi("36;1"),
+  green: ansi("32"),
+  yellow: ansi("33"),
+  magenta: ansi("35;1")
+};
+function getOverrideTarget(selector) {
+  let value = manifest.overrides;
+  for (const segment of selector) {
+    value = value?.[segment];
+  }
+  return typeof value === "string" ? value : undefined;
+}
+function packageNameFromSegment(segment) {
+  const versionAt = segment.indexOf("@", segment.startsWith("@") ? 1 : 0);
+  return versionAt > 0 ? segment.slice(0, versionAt) : segment;
+}
+function getInstalledInfo(selector) {
+  const segments = selector.filter((segment) => segment !== ".");
+  const name = packageNameFromSegment(segments.at(-1) ?? "");
+  const packageDir = resolve(workspaceRoot, "node_modules", name);
+  try {
+    const { version } = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8"));
+    return { name, version, installedAt: statSync(packageDir).mtime };
+  } catch {
+    return { name };
+  }
+}
+function formatInstalledAt(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  const stamp = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const elapsedMinutes = Math.max(0, (Date.now() - date.getTime()) / 60000);
+  const relative = elapsedMinutes < 1 ? "just now" : elapsedMinutes < 60 ? `${Math.floor(elapsedMinutes)}m ago` : elapsedMinutes < 60 * 24 ? `${Math.floor(elapsedMinutes / 60)}h ago` : `${Math.floor(elapsedMinutes / (60 * 24))}d ago`;
+  return `${stamp} (${relative})`;
+}
+function wrapText(text, width) {
+  const lines = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    let remaining = word;
+    while (remaining.length > width) {
+      if (line) {
+        lines.push(line);
+        line = "";
+      }
+      lines.push(remaining.slice(0, width));
+      remaining = remaining.slice(width);
+    }
+    if (!line) {
+      line = remaining;
+    } else if (line.length + 1 + remaining.length <= width) {
+      line += ` ${remaining}`;
+    } else {
+      lines.push(line);
+      line = remaining;
+    }
+  }
+  if (line || lines.length === 0) {
+    lines.push(line);
+  }
+  return lines;
+}
+function printOverrideTable(entries) {
+  if (entries.length === 0) {
+    return;
+  }
+  const headers = [
+    "Package",
+    "Override",
+    "Installed",
+    "Last installed",
+    "Reason"
+  ];
+  const rows = entries.map(({ selector, reason }) => {
+    const target = getOverrideTarget(selector) ?? "";
+    const installed = getInstalledInfo(selector);
+    const versionStyle = installed.version === undefined ? color.dim : installed.version === target ? color.green : color.yellow;
+    return [
+      { text: formatSelector(selector), style: color.bold },
+      { text: target, style: color.magenta },
+      { text: installed.version ?? "not installed", style: versionStyle },
+      {
+        text: installed.installedAt ? formatInstalledAt(installed.installedAt) : "-",
+        style: color.dim
+      },
+      { text: reason.trim(), style: (text) => text }
+    ];
+  });
+  const widths = headers.map((header, column) => Math.max(header.length, ...rows.map((row) => column === 4 ? 0 : row[column].text.length)));
+  const fixedWidth = widths.slice(0, 4).reduce((sum, width) => sum + width + 3, 0) + 4;
+  const longestReason = Math.max(headers[4].length, ...rows.map((row) => row[4].text.length));
+  widths[4] = process.stdout.isTTY && process.stdout.columns ? Math.max(20, Math.min(longestReason, process.stdout.columns - fixedWidth)) : longestReason;
+  const border = (left, middle, right) => color.dim(`${left}${widths.map((width) => "─".repeat(width + 2)).join(middle)}${right}`);
+  const bar = color.dim("│");
+  const renderLine = (cells) => `${bar}${cells.map(({ text, style }, column) => ` ${style(text)}${" ".repeat(widths[column] - text.length)} `).join(bar)}${bar}`;
+  const output = [
+    border("┌", "┬", "┐"),
+    renderLine(headers.map((text) => ({ text, style: color.cyan }))),
+    border("├", "┼", "┤")
+  ];
+  rows.forEach((row, rowIndex) => {
+    if (rowIndex > 0) {
+      output.push(border("├", "┼", "┤"));
+    }
+    const reasonLines = wrapText(row[4].text, widths[4]);
+    reasonLines.forEach((reasonLine, index) => {
+      output.push(renderLine(row.map((cell, column) => column === 4 ? { text: reasonLine, style: cell.style } : index === 0 ? cell : { text: "", style: cell.style })));
+    });
+  });
+  output.push(border("└", "┴", "┘"));
+  console.log(output.join(`
+`));
 }
 function warnDiagnostic(message) {
   console.warn(`\x1B[33;1m[why-override] Warning: ${message}\x1B[0m`);
@@ -1432,9 +1550,10 @@ function getPromptTimeoutSeconds() {
   return defaultPromptTimeoutSeconds;
 }
 if (reasonStoreMissing) {
-  warnDiagnostic("override-reasons.jsonc is missing; saved reasons cannot be read or updated.");
+  warnDiagnostic("override-reasons.jsonc is missing; it will be created when you save a reason.");
   reasonDocument = { version: 1, reasons: [] };
-  reasonStoreWritable = false;
+  reasonText = `${JSON.stringify(reasonDocument, null, 2)}
+`;
 } else if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
   warnDiagnostic("override-reasons.jsonc is malformed; saved reasons cannot be read or updated.");
   reasonDocument = { version: 1, reasons: [] };
@@ -1468,16 +1587,33 @@ async function askForExplanation(displaySelector) {
     return;
   }
   let timeoutHandle;
+  let countdownHandle;
   const timeoutToken = Symbol("prompt-timeout");
   const closeToken = Symbol("prompt-close");
+  const formatQuestion = (secondsLeft) => `Why do you need to override this? ${displaySelector} (auto-skips in ${secondsLeft}s)`;
+  const deadline = Date.now() + promptTimeoutSeconds * 1000;
+  const questionPromise = promptInterface.question(`${formatQuestion(promptTimeoutSeconds)}
+`).catch(() => closeToken);
+  if (process.stdout.isTTY) {
+    countdownHandle = setInterval(() => {
+      const secondsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      const rowsBelowQuestion = promptInterface.getCursorPos().rows;
+      process.stdout.write("\x1B7");
+      moveCursor(process.stdout, 0, -rowsBelowQuestion);
+      cursorTo(process.stdout, 0);
+      clearLine(process.stdout, 0);
+      process.stdout.write(formatQuestion(secondsLeft));
+      process.stdout.write("\x1B8");
+    }, 1000);
+  }
   const response = await Promise.race([
-    promptInterface.question(`Why do you need to override this? ${displaySelector}
-`).catch(() => closeToken),
+    questionPromise,
     new Promise((resolveTimeout) => {
       timeoutHandle = setTimeout(() => resolveTimeout(timeoutToken), promptTimeoutSeconds * 1000);
     })
   ]);
   clearTimeout(timeoutHandle);
+  clearInterval(countdownHandle);
   if (response === timeoutToken) {
     console.warn(`Timed out after ${promptTimeoutSeconds} seconds; skipping ${displaySelector}.`);
     promptInterface.close();
@@ -1538,12 +1674,15 @@ try {
       await refreshReason(selector);
     }
   } else {
+    printOverrideTable(selectors.map((selector) => ({
+      selector,
+      reason: reasonsBySelector.get(selectorKey(selector))
+    })).filter(({ reason }) => typeof reason === "string" && reason.trim() !== ""));
     for (const selector of selectors) {
       const key = selectorKey(selector);
       const displaySelector = formatSelector(selector);
       const reason = reasonsBySelector.get(key);
       if (typeof reason === "string" && reason.trim() !== "") {
-        console.log(`Override ${displaySelector}: ${reason}`);
         continue;
       }
       if (!promptInterface) {
@@ -1557,7 +1696,7 @@ try {
         continue;
       }
       if (!reasonStoreWritable) {
-        warnDiagnostic(`cannot save a reason for ${displaySelector} because the reason store is ${reasonStoreMissing ? "missing" : "malformed"}; leaving it unchanged.`);
+        warnDiagnostic(`cannot save a reason for ${displaySelector} because the reason store is malformed; leaving it unchanged.`);
         continue;
       }
       const timestamp = new Date().toISOString();
@@ -1570,6 +1709,10 @@ try {
       const edits = modify(reasonText, ["reasons", reasonDocument.reasons.length], record, { formattingOptions: { insertSpaces: true, tabSize: 2 } });
       reasonText = applyEdits(reasonText, edits);
       writeFileSync(reasonStorePath, reasonText);
+      if (reasonStoreMissing) {
+        console.log(`Created ${reasonStorePath}.`);
+        reasonStoreMissing = false;
+      }
       reasonDocument.reasons.push(record);
       reasonsBySelector.set(key, explanation);
     }
