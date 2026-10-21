@@ -1,0 +1,25 @@
+# Changelog
+
+## 1.0.0 (2026-10-21)
+
+
+### Features
+
+* **cli:** add --reenter flag and refresh --all command ([f5f3290](https://github.com/jericbas/why-override/commit/f5f3290660bc106f26bb862b2f947d119924a86e))
+* **cli:** add --reenter flag and refresh --all command ([d166a99](https://github.com/jericbas/why-override/commit/d166a99d7eee6160928a24a20d726d7000fe7bec))
+* **cli:** display override table with color and countdown interactive prompt ([b4fe903](https://github.com/jericbas/why-override/commit/b4fe9039706bf902a37620b65930fdf16bd93822))
+* **cli:** display override table with color and countdown interactive prompt ([5255c74](https://github.com/jericbas/why-override/commit/5255c741d69ca1c84ec2238f9fad7c3b8214115c))
+* **cli:** rename reason store to .override-reasons.jsonc with legacy fallback ([5150052](https://github.com/jericbas/why-override/commit/515005203bbc4eae0005e144cb1e7ff09900229a))
+* complete override reason enforcement ([a0fd616](https://github.com/jericbas/why-override/commit/a0fd616f00912e637c83b8c0e788b1b176110c21))
+* **diagnostics:** warn on aged and invalid override reasons ([db0f3d0](https://github.com/jericbas/why-override/commit/db0f3d071a07fdee15671a32b75ad7d052fd9beb))
+* **prompt:** save undocumented override reasons ([ca9ce6c](https://github.com/jericbas/why-override/commit/ca9ce6c69f08e4b3c8f66099611ef6d07837e654))
+* **refresh:** update saved override rationale ([b0091e7](https://github.com/jericbas/why-override/commit/b0091e7611d649888df120dcebcc0b64d2b5c8b8))
+* release initial why-override CLI and workspace ([9ae4338](https://github.com/jericbas/why-override/commit/9ae4338c39d397de37cca8abd60ee6bc3b17d191))
+* **selectors:** match exact nested override paths ([9347ea3](https://github.com/jericbas/why-override/commit/9347ea38853efe4d7606ef246cc82323246eb323))
+* **timeout:** bound interactive override prompts ([9fd4a25](https://github.com/jericbas/why-override/commit/9fd4a255d4ff1c8b75ebc3247a353f06ea31c390))
+
+
+### Bug Fixes
+
+* **cli:** handle missing reason store, nested install paths, and refresh edge cases ([429273c](https://github.com/jericbas/why-override/commit/429273ce7690f699bd23d270efef313aa2a70852))
+* **cli:** handle missing reason store, nested install paths, and refresh edge cases ([b14d036](https://github.com/jericbas/why-override/commit/b14d036f8bd96a8477a8d97c0a04171ab3f03fcc))
