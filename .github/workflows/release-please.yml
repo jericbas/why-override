@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publish to npm'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -20,26 +26,26 @@ jobs:
           path: packages/why-override
 
       - uses: actions/checkout@v4
-        if: ${{ steps.release.outputs['packages/why-override--release_created'] }}
+        if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
 
       - uses: actions/setup-node@v4
-        if: ${{ steps.release.outputs['packages/why-override--release_created'] }}
+        if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
       - uses: oven-sh/setup-bun@v2
-        if: ${{ steps.release.outputs['packages/why-override--release_created'] }}
+        if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
         with:
           bun-version: 1.4.2
 
       - run: bun install --frozen-lockfile
-        if: ${{ steps.release.outputs['packages/why-override--release_created'] }}
+        if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
 
       - run: bun run build
-        if: ${{ steps.release.outputs['packages/why-override--release_created'] }}
+        if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
 
       - run: npm publish --workspace=packages/why-override --access public
-        if: ${{ steps.release.outputs['packages/why-override--release_created'] }}
+        if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
