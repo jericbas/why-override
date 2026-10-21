@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { clearLine, cursorTo, moveCursor } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -40,11 +40,24 @@ function findWorkspaceRoot() {
   );
 }
 
+function findReasonStorePath(root) {
+  const dotPath = resolve(root, ".override-reasons.jsonc");
+  if (existsSync(dotPath)) {
+    return dotPath;
+  }
+  const regularPath = resolve(root, "override-reasons.jsonc");
+  if (existsSync(regularPath)) {
+    return regularPath;
+  }
+  return dotPath;
+}
+
 const workspaceRoot = findWorkspaceRoot();
 const manifest = JSON.parse(
   readFileSync(resolve(workspaceRoot, "package.json"), "utf8"),
 );
-const reasonStorePath = resolve(workspaceRoot, "override-reasons.jsonc");
+const reasonStorePath = findReasonStorePath(workspaceRoot);
+const reasonStoreFilename = basename(reasonStorePath);
 let reasonText = "";
 let reasonStoreMissing = false;
 try {
@@ -353,14 +366,14 @@ function getPromptTimeoutSeconds() {
 
 if (reasonStoreMissing) {
   warnDiagnostic(
-    "override-reasons.jsonc is missing; it will be created when you save a reason.",
+    `${reasonStoreFilename} is missing; it will be created when you save a reason.`,
   );
   reasonDocument = { version: 1, reasons: [] };
   // Start from an empty store; the file is only written once a reason is saved.
   reasonText = `${JSON.stringify(reasonDocument, null, 2)}\n`;
 } else if (parseErrors.length > 0 || !Array.isArray(reasonDocument?.reasons)) {
   warnDiagnostic(
-    "override-reasons.jsonc is malformed; saved reasons cannot be read or updated.",
+    `${reasonStoreFilename} is malformed; saved reasons cannot be read or updated.`,
   );
   reasonDocument = { version: 1, reasons: [] };
   reasonStoreWritable = false;

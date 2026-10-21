@@ -1,6 +1,6 @@
 # why-override
 
-`why-override` is a CLI that displays and maintains explanations for npm override selectors. Override declarations stay in your project's root `package.json`; explanations live in a tracked root `override-reasons.jsonc` file.
+`why-override` is a CLI that displays and maintains explanations for npm override selectors. Override declarations stay in your project's root `package.json`; explanations live in a tracked root `.override-reasons.jsonc` file (with backwards-compatible fallback to `override-reasons.jsonc`).
 
 > **Publication status:** `why-override` is prepared as an npm package, but has not yet been published to the npm registry. The installation command below will work once it is published.
 
@@ -26,7 +26,7 @@ Keep the actual override declarations in the project root `package.json`:
 }
 ```
 
-Create `override-reasons.jsonc` in the same directory. Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
+Create `.override-reasons.jsonc` in the same directory. Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
 
 ```jsonc
 {
@@ -54,7 +54,7 @@ Nested selectors use one array element per key, including sub-overrides and the 
 }
 ```
 
-The selector path is stored in `override-reasons.jsonc` as `["packageA", "packageB"]`:
+The selector path is stored in `.override-reasons.jsonc` as `["packageA", "packageB"]`:
 
 ```jsonc
 {
@@ -101,7 +101,7 @@ If the root already has a `preinstall` command, keep it and append `why-override
 }
 ```
 
-The tool does not edit the consumer's package manifest. If `override-reasons.jsonc` does not yet exist, it is created automatically when the first interactive reason is saved. Save and commit both files with your dependency changes.
+The tool does not edit the consumer's package manifest. If `.override-reasons.jsonc` does not yet exist, it is created automatically when the first interactive reason is saved (legacy `override-reasons.jsonc` is also recognized). Save and commit both files with your dependency changes.
 
 ## Use
 

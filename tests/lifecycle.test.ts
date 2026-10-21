@@ -63,8 +63,8 @@ async function createFixture(
       await readFile(join(repositoryRoot, "apps/demo/src/index.js"), "utf8"),
     );
     await writeFile(
-      join(fixtureRoot, "override-reasons.jsonc"),
-      await readFile(join(repositoryRoot, "override-reasons.jsonc"), "utf8"),
+      join(fixtureRoot, ".override-reasons.jsonc"),
+      await readFile(join(repositoryRoot, ".override-reasons.jsonc"), "utf8"),
     );
     await writeFile(
       join(packageDirectory, "dist/cli.js"),
@@ -199,7 +199,7 @@ test("interactive npm install saves a reason and displays it next time", async (
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     await writeFile(
       reasonStorePath,
       '{\n  "version": 1,\n  // Reasons are reviewed with dependency changes.\n  "reasons": []\n}\n',
@@ -252,7 +252,7 @@ test("empty interactive answer leaves the reason store unchanged", async () => {
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -280,7 +280,7 @@ test("non-TTY npm install skips undocumented reasons", async () => {
   const fixtureRoot = await createFixture(undefined, 120);
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -310,7 +310,7 @@ test("interactive prompt uses env timeout before project config", async () => {
   const fixtureRoot = await createFixture(undefined, 5);
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -344,7 +344,7 @@ test("interactive prompt uses project timeout when env is absent", async () => {
 
   try {
     await writeFile(
-      join(fixtureRoot, "override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.jsonc"),
       JSON.stringify({ version: 1, reasons: [] }, null, 2),
     );
     const result = await runInteractiveNpm(fixtureRoot, [
@@ -365,7 +365,7 @@ test("invalid env timeout warns and falls back to ten seconds", async () => {
   const fixtureRoot = await createFixture(undefined, 1);
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -399,7 +399,7 @@ test("invalid project timeout warns and falls back to ten seconds", async () => 
 
   try {
     await writeFile(
-      join(fixtureRoot, "override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.jsonc"),
       JSON.stringify({ version: 1, reasons: [] }, null, 2),
     );
     const result = await runInteractiveNpm(
@@ -426,7 +426,7 @@ test("refresh updates changed reason but preserves creation time", async () => {
       "--no-fund",
     ]);
     expect(installResult.exitCode).toBe(0);
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const createdAt = "2020-01-01T00:00:00.000Z";
     const originalUpdatedAt = "2021-01-01T00:00:00.000Z";
     await writeFile(
@@ -506,7 +506,7 @@ test("changing only an override target leaves its reason record unchanged", asyn
     manifest.overrides["is-number"] = "7.0.1";
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const record = {
       selector: ["is-number"],
       reason: "Original rationale.",
@@ -540,7 +540,7 @@ test("recorded target drift warns without changing the reason store", async () =
   const fixtureRoot = await createFixture({ "is-number": "7.0.1" });
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const originalReasonStore = JSON.stringify(
       {
         version: 1,
@@ -575,7 +575,7 @@ test("refresh with an unchanged reason records the current target", async () => 
   const fixtureRoot = await createFixture({ "is-number": "7.0.1" });
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const createdAt = "2020-01-01T00:00:00.000Z";
     const originalUpdatedAt = "2021-01-01T00:00:00.000Z";
     await writeFile(
@@ -627,7 +627,7 @@ test("refresh --all prompts to re-enter reasons for each override", async () => 
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const result = await runInteractiveEnforcer(
       fixtureRoot,
       ["refresh", "--all"],
@@ -650,7 +650,7 @@ test("--reenter flag prompts to re-enter reasons for existing overrides", async 
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const result = await runInteractiveEnforcer(
       fixtureRoot,
       ["--reenter"],
@@ -678,7 +678,7 @@ test("optional workspaces are displayed and invalid values are malformed", async
   try {
     const timestamp = new Date().toISOString();
     await writeFile(
-      join(fixtureRoot, "override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.jsonc"),
       JSON.stringify(
         {
           version: 1,
@@ -722,7 +722,7 @@ test("aging documented reasons does not trigger an install prompt", async () => 
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const oldReasonStore = JSON.stringify(
       {
         version: 1,
@@ -779,7 +779,7 @@ test("reasons warn at 30 days but not before the boundary", async () => {
       },
     ];
     await writeFile(
-      join(fixtureRoot, "override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.jsonc"),
       JSON.stringify({ version: 1, reasons }, null, 2),
     );
 
@@ -799,7 +799,7 @@ test("malformed reason records warn, remain intact, and are treated as undocumen
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const malformedRecord = {
       selector: 42,
       reason: "Unreadable selector record.",
@@ -835,7 +835,7 @@ test("malformed reason store warns and remains unchanged without blocking instal
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const malformedReasonStore = '{ "version": 1, "reasons": [\n';
     await writeFile(reasonStorePath, malformedReasonStore);
 
@@ -846,7 +846,7 @@ test("malformed reason store warns and remains unchanged without blocking instal
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("override-reasons.jsonc is malformed");
+    expect(result.output).toContain(".override-reasons.jsonc is malformed");
     expect(await readFile(reasonStorePath, "utf8")).toBe(malformedReasonStore);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -857,12 +857,12 @@ test("missing reason store warns without blocking install or creating the file",
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     await rm(reasonStorePath);
 
     const result = await runEnforcer(fixtureRoot);
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("override-reasons.jsonc is missing");
+    expect(result.output).toContain(".override-reasons.jsonc is missing");
     await expect(readFile(reasonStorePath, "utf8")).rejects.toThrow();
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -873,7 +873,7 @@ test("missing reason store is created when an interactive reason is saved", asyn
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     await rm(reasonStorePath);
 
     const result = await runInteractiveEnforcer(
@@ -897,11 +897,30 @@ test("missing reason store is created when an interactive reason is saved", asyn
   }
 });
 
+test("legacy override-reasons.jsonc without dot is supported as fallback", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const dotPath = join(fixtureRoot, ".override-reasons.jsonc");
+    const legacyPath = join(fixtureRoot, "override-reasons.jsonc");
+    const content = await readFile(dotPath, "utf8");
+    await rm(dotPath);
+    await writeFile(legacyPath, content);
+
+    const result = await runEnforcer(fixtureRoot);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).not.toContain("missing");
+    expect(result.output).toContain(documentedReason);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("refresh updates the valid record when an earlier malformed record shares the selector", async () => {
   const fixtureRoot = await createFixture();
 
   try {
-    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
     const malformedSameSelector = {
       selector: ["is-number"],
       reason: "Malformed timestamp record.",
@@ -1035,7 +1054,7 @@ test("stale reason records warn and remain unchanged without blocking installs",
         expect(lockResult.exitCode).toBe(0);
       }
 
-      const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+      const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
       const staleReasonStore = JSON.stringify(
         {
           version: 1,
@@ -1104,7 +1123,7 @@ test("enforcer matches exact nested selector paths and rejects wildcard keys", a
       updatedAt: "2026-10-15T00:00:00.000Z",
     }));
     await writeFile(
-      join(fixtureRoot, "override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.jsonc"),
       JSON.stringify({ version: 1, reasons: records }, null, 2),
     );
 
