@@ -623,6 +623,52 @@ test("refresh with an unchanged reason records the current target", async () => 
   }
 });
 
+test("refresh --all prompts to re-enter reasons for each override", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const result = await runInteractiveEnforcer(
+      fixtureRoot,
+      ["refresh", "--all"],
+      "New re-entered rationale.",
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(true);
+    expect(result.output).toContain('Refreshed reason for "is-number"');
+
+    const [record] = parseJSONC(
+      await readFile(reasonStorePath, "utf8"),
+    ).reasons;
+    expect(record.reason).toBe("New re-entered rationale.");
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("--reenter flag prompts to re-enter reasons for existing overrides", async () => {
+  const fixtureRoot = await createFixture();
+
+  try {
+    const reasonStorePath = join(fixtureRoot, "override-reasons.jsonc");
+    const result = await runInteractiveEnforcer(
+      fixtureRoot,
+      ["--reenter"],
+      "Reentered via flag.",
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.prompted).toBe(true);
+    expect(result.output).toContain('Refreshed reason for "is-number"');
+
+    const [record] = parseJSONC(
+      await readFile(reasonStorePath, "utf8"),
+    ).reasons;
+    expect(record.reason).toBe("Reentered via flag.");
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("optional workspaces are displayed and invalid values are malformed", async () => {
   const fixtureRoot = await createFixture({
     "is-number": "7.0.0",

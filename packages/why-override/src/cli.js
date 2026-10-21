@@ -520,29 +520,38 @@ async function refreshReason(selector) {
 
 try {
   if (process.argv[2] === "refresh") {
-    let selector;
-    try {
-      selector = JSON.parse(process.argv[3] ?? "");
-    } catch {
-      selector = undefined;
-    }
-
-    if (
-      process.argv.length !== 4 ||
-      !Array.isArray(selector) ||
-      selector.length === 0 ||
-      !selector.every(
-        (segment) => typeof segment === "string" && segment.length > 0,
-      )
-    ) {
-      console.error(
-        'Usage: why-override refresh \'["package", "nested-selector"]\'',
-      );
-      process.exitCode = 1;
+    if (process.argv[3] === "--all" || process.argv[3] === "-a") {
+      for (const selector of selectors) {
+        await refreshReason(selector);
+      }
     } else {
-      await refreshReason(selector);
+      let selector;
+      try {
+        selector = JSON.parse(process.argv[3] ?? "");
+      } catch {
+        selector = undefined;
+      }
+
+      if (
+        process.argv.length !== 4 ||
+        !Array.isArray(selector) ||
+        selector.length === 0 ||
+        !selector.every(
+          (segment) => typeof segment === "string" && segment.length > 0,
+        )
+      ) {
+        console.error(
+          'Usage: why-override refresh \'["package", "nested-selector"]\' or why-override refresh --all',
+        );
+        process.exitCode = 1;
+      } else {
+        await refreshReason(selector);
+      }
     }
   } else {
+    const isReenter =
+      process.argv.includes("--reenter") || process.argv.includes("--re-enter");
+
     printOverrideTable(
       selectors
         .map((selector) => ({
@@ -559,6 +568,9 @@ try {
       const displaySelector = formatSelector(selector);
       const reason = reasonsBySelector.get(key);
       if (typeof reason === "string" && reason.trim() !== "") {
+        if (isReenter) {
+          await refreshReason(selector);
+        }
         continue;
       }
 
