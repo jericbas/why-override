@@ -22,5 +22,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0"
+  },
+  "dependencies": {
+    "@why-override/demo": "^0.1.0"
   }
 }

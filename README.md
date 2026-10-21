@@ -64,7 +64,7 @@ If the root already has a `preinstall` command, keep it and append `why-override
 }
 ```
 
-The tool does not edit the consumer's package manifest or create the reason file automatically. Save and commit both files with the dependency changes.
+The tool does not edit the consumer's package manifest. If `override-reasons.jsonc` does not yet exist, it is created automatically when the first interactive reason is saved. Save and commit both files with your dependency changes.
 
 ## Use
 
@@ -75,7 +75,21 @@ npm install
 npm ci
 ```
 
-For undocumented selectors, an interactive terminal asks `Why do you need to override this?`. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason. Documented reasons are printed during the check.
+Documented reasons are displayed in a formatted, color-coded table showing the package selector, override target version, installed version in `node_modules` (color-coded to indicate match status), when the package was last installed, and the documented explanation:
+
+```text
+┌─────────────┬──────────┬───────────┬─────────────────────┬──────────────────────┐
+│ Package     │ Override │ Installed │ Last installed      │ Reason               │
+├─────────────┼──────────┼───────────┼─────────────────────┼──────────────────────┤
+│ "is-number" │ 7.0.0    │ 7.0.0     │ 2026-10-16 (4d ago) │ Keep is-odd's        │
+│             │          │           │                     │ transitive is-number │
+│             │          │           │                     │ dependency on a      │
+│             │          │           │                     │ known compatible     │
+│             │          │           │                     │ release.             │
+└─────────────┴──────────┴───────────┴─────────────────────┴──────────────────────┘
+```
+
+For undocumented selectors, an interactive terminal asks `Why do you need to override this? <selector> (auto-skips in 10s)` with a real-time countdown. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason.
 
 Refresh an existing reason from an interactive terminal by passing its exact selector path as a JSON array:
 

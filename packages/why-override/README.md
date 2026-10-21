@@ -44,6 +44,22 @@ Create `override-reasons.jsonc` in the same directory. Each record identifies an
 
 Nested selectors use one array element per key, including the special `.` selector. For example, `parent > .` is stored as `["parent", "."]`. Replacement targets such as npm aliases, Git references, and local paths are not part of selector identity.
 
+Records may also include two optional fields:
+
+- `target`: a snapshot of the override value (for example `"7.0.0"`) when the reason was written. The CLI fills it in automatically when it saves a new reason and updates it on `refresh`. If the root override later changes, installs warn that the reason should be reviewed. Records without `target` are still valid and are not checked.
+- `workspaces`: a hand-maintained list of the workspaces that need the override, for example `["apps/web", "apps/api"]`. It is shown next to the reason for context only; the CLI does not check it against your dependency tree.
+
+```jsonc
+{
+  "selector": ["is-number"],
+  "reason": "Keep the transitive dependency on a known compatible release.",
+  "target": "7.0.0",
+  "workspaces": ["apps/web"],
+  "createdAt": "2026-10-15T00:00:00.000Z",
+  "updatedAt": "2026-10-15T00:00:00.000Z"
+}
+```
+
 Add the CLI to the root project's `preinstall` script:
 
 ```json
@@ -64,7 +80,7 @@ If the root already has a `preinstall` command, keep it and append `why-override
 }
 ```
 
-The tool does not edit the consumer's package manifest or create the reason file automatically. Save and commit both files with the dependency changes.
+The tool does not edit the consumer's package manifest. If `override-reasons.jsonc` does not yet exist, it is created automatically when the first interactive reason is saved. Save and commit both files with your dependency changes.
 
 ## Use
 
@@ -75,7 +91,21 @@ npm install
 npm ci
 ```
 
-For undocumented selectors, an interactive terminal asks `Why do you need to override this?`. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason. Documented reasons are printed during the check.
+Documented reasons are displayed in a formatted, color-coded table showing the package selector, override target version, installed version in `node_modules` (color-coded to indicate match status), when the package was last installed, and the documented explanation:
+
+```text
+┌─────────────┬──────────┬───────────┬─────────────────────┬──────────────────────┐
+│ Package     │ Override │ Installed │ Last installed      │ Reason               │
+├─────────────┼──────────┼───────────┼─────────────────────┼──────────────────────┤
+│ "is-number" │ 7.0.0    │ 7.0.0     │ 2026-10-16 (4d ago) │ Keep is-odd's        │
+│             │          │           │                     │ transitive is-number │
+│             │          │           │                     │ dependency on a      │
+│             │          │           │                     │ known compatible     │
+│             │          │           │                     │ release.             │
+└─────────────┴──────────┴───────────┴─────────────────────┴──────────────────────┘
+```
+
+For undocumented selectors, an interactive terminal asks `Why do you need to override this? <selector> (auto-skips in 10s)` with a real-time countdown. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason.
 
 Refresh an existing reason from an interactive terminal by passing its exact selector path as a JSON array:
 
@@ -84,7 +114,7 @@ npx why-override refresh '["is-number"]'
 npx why-override refresh '["parent", "."]'
 ```
 
-A changed explanation preserves `createdAt` and updates `updatedAt`; submitting the same explanation leaves timestamps unchanged.
+A changed explanation preserves `createdAt` and updates `updatedAt`; submitting the same explanation leaves timestamps unchanged, unless the override target changed since the reason was written, in which case `target` and `updatedAt` are updated to mark it reviewed.
 
 ## Configuration and warnings
 
@@ -108,7 +138,7 @@ Alternatively, set a project fallback in the root `package.json`:
 
 The environment variable takes precedence over project configuration. Invalid values, including zero, warn and fall back to 10 seconds.
 
-Reasons last updated 30 days ago or more receive a review advisory. Malformed records and records whose selectors are no longer present in root overrides also produce warnings. These conditions do not block installation or automatically rewrite or remove the reason file. Stale records must be cleaned up deliberately.
+Reasons last updated 30 days ago or more receive a review advisory. Reasons whose recorded `target` no longer matches the root override also receive a review advisory. Malformed records and records whose selectors are no longer present in root overrides also produce warnings. These conditions do not block installation or automatically rewrite or remove the reason file. Stale records must be cleaned up deliberately.
 
 ## Coverage
 
