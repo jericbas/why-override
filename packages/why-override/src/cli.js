@@ -3,15 +3,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { runCheck } from "./check.js";
 import { color } from "./color.js";
+import { runDoctor } from "./doctor.js";
 import { runEnforce } from "./enforce.js";
 import { askForExplanation } from "./prompt.js";
+import { runPrune } from "./prune.js";
 import {
   refreshInteractive,
   refreshReason,
   updateSelectorReason,
 } from "./refresh.js";
-import { collectOverrideSelectors, formatSelector } from "./selectors.js";
+import { collectAllManifestSelectors, formatSelector } from "./selectors.js";
 import {
   getPromptTimeoutSeconds,
   loadReasonStore,
@@ -33,11 +36,25 @@ const promptInterface = process.stdin.isTTY
   ? createInterface({ input: process.stdin, output: process.stdout })
   : undefined;
 
-const selectors = collectOverrideSelectors(manifest.overrides);
+const selectors = collectAllManifestSelectors(manifest);
+
+const isCheck =
+  process.argv[2] === "check" ||
+  process.argv.includes("--check") ||
+  process.argv.includes("--ci");
+const isPrune =
+  process.argv[2] === "prune" ||
+  process.argv[2] === "clean" ||
+  process.argv.includes("--prune") ||
+  process.argv.includes("--clean");
+const isDoctor =
+  process.argv[2] === "doctor" || process.argv.includes("--doctor");
+
 const { reasonsBySelector, workspacesBySelector } = validateReasons({
   reasonDocument,
   selectors,
   manifest,
+  warn: !isCheck && !isPrune && !isDoctor,
 });
 
 const context = {
@@ -56,8 +73,30 @@ const context = {
   workspacesBySelector,
 };
 
+function printHelp() {
+  console.log(`why-override - Document and review package dependency overrides
+
+Usage:
+  why-override                     Enforce override reasons and prompt in interactive TTY
+  why-override check, --check, --ci Verify all overrides are documented (exits 1 on failure)
+  why-override prune, clean        Remove orphaned records from reason store
+  why-override doctor              Analyze override health and upstream dependencies
+  why-override refresh             Interactively update reasons
+  why-override refresh --all       Prompt to re-enter reasons for all overrides
+  why-override refresh '<selector>' Update reason for a specific selector
+`);
+}
+
 try {
-  if (process.argv[2] === "refresh") {
+  if (process.argv.includes("--help") || process.argv.includes("-h")) {
+    printHelp();
+  } else if (isCheck) {
+    runCheck(context);
+  } else if (isPrune) {
+    runPrune(context);
+  } else if (isDoctor) {
+    runDoctor(context);
+  } else if (process.argv[2] === "refresh") {
     if (process.argv[3] === "--all" || process.argv[3] === "-a") {
       for (const selector of selectors) {
         await refreshReason(context, selector);

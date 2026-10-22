@@ -99,12 +99,15 @@ export async function runNpm(
   return { output: `${stdout}\n${stderr}`, exitCode };
 }
 
-export async function runEnforcer(fixtureRoot: string) {
-  const child = Bun.spawn(["node", "packages/why-override/dist/cli.js"], {
-    cwd: fixtureRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+export async function runEnforcer(fixtureRoot: string, args: string[] = []) {
+  const child = Bun.spawn(
+    ["node", "packages/why-override/dist/cli.js", ...args],
+    {
+      cwd: fixtureRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
