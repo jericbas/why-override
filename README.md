@@ -31,7 +31,7 @@ Keep the actual override declarations in the project root `package.json`:
 }
 ```
 
-Create `.override-reasons.jsonc` in the same directory. Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
+Create `.override-reasons.jsonc` in the same directory (see [.override-reasons.jsonc](.override-reasons.jsonc) for a working demo example). Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
 
 ```jsonc
 {
@@ -139,6 +139,14 @@ pnpm why-override
 bun why-override
 ```
 
+### Running the demo
+
+To inspect a realistic demo setup with documented overrides and reasons, see [.override-reasons.jsonc](.override-reasons.jsonc) and run:
+
+```sh
+bun run demo
+```
+
 ### Re-entering or updating reasons
 
 To re-enter or update explanations across all overrides interactively, pass `--reenter`:
@@ -212,7 +220,7 @@ If an override is needed specifically for a workspace member, declare it in the 
 
 ### How do I check or edit reasons manually?
 
-Reasons are stored as JSONC in `.override-reasons.jsonc` at the root of your project. You can inspect, modify, or add comments to this file directly in your code editor at any time.
+Reasons are stored as JSONC in `.override-reasons.jsonc` at the root of your project. You can inspect, modify, or add comments to this file directly in your code editor at any time (see [.override-reasons.jsonc](.override-reasons.jsonc) for a realistic demo example).
 
 ## License
 
