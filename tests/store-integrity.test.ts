@@ -14,7 +14,7 @@ import {
 test("malformed reason records warn, remain intact, and are treated as undocumented", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const malformedRecord = {
       selector: 42,
       reason: "Unreadable selector record.",
@@ -49,7 +49,7 @@ test("malformed reason records warn, remain intact, and are treated as undocumen
 test("malformed reason store warns and remains unchanged without blocking install", async () => {
   const fixtureRoot = await createFixture();
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const malformedReasonStore = '{ "version": 1, "reasons": [\n';
     await writeFile(reasonStorePath, malformedReasonStore);
 
@@ -60,7 +60,7 @@ test("malformed reason store warns and remains unchanged without blocking instal
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain(".override-reasons.jsonc is malformed");
+    expect(result.output).toContain(".override-reasons.json is malformed");
     expect(await readFile(reasonStorePath, "utf8")).toBe(malformedReasonStore);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -70,12 +70,12 @@ test("malformed reason store warns and remains unchanged without blocking instal
 test("missing reason store warns without blocking install or creating the file", async () => {
   const fixtureRoot = await createFixture();
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     await rm(reasonStorePath);
 
     const result = await runEnforcer(fixtureRoot);
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain(".override-reasons.jsonc is missing");
+    expect(result.output).toContain(".override-reasons.json is missing");
     await expect(readFile(reasonStorePath, "utf8")).rejects.toThrow();
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -85,7 +85,7 @@ test("missing reason store warns without blocking install or creating the file",
 test("missing reason store is created when an interactive reason is saved", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     await rm(reasonStorePath);
 
     const result = await runInteractiveEnforcer(
@@ -109,11 +109,11 @@ test("missing reason store is created when an interactive reason is saved", asyn
   }
 });
 
-test("legacy override-reasons.jsonc without dot is supported as fallback", async () => {
+test("legacy override-reasons.json without dot is supported as fallback", async () => {
   const fixtureRoot = await createFixture();
   try {
-    const dotPath = join(fixtureRoot, ".override-reasons.jsonc");
-    const legacyPath = join(fixtureRoot, "override-reasons.jsonc");
+    const dotPath = join(fixtureRoot, ".override-reasons.json");
+    const legacyPath = join(fixtureRoot, "override-reasons.json");
     const content = await readFile(dotPath, "utf8");
     await rm(dotPath);
     await writeFile(legacyPath, content);

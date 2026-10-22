@@ -36,14 +36,13 @@ export function findWorkspaceRoot() {
 }
 
 export function findReasonStorePath(root) {
-  const dotPath = resolve(root, ".override-reasons.jsonc");
+  const dotPath = resolve(root, ".override-reasons.json");
   if (existsSync(dotPath)) {
     return dotPath;
   }
-  const regularPath = resolve(root, "override-reasons.jsonc");
+  const regularPath = resolve(root, "override-reasons.json");
   if (existsSync(regularPath)) {
     return regularPath;
   }
   return dotPath;
 }
-

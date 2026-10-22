@@ -16,4 +16,3 @@ export const color = {
 export function warnDiagnostic(message) {
   console.warn(`\u001b[33;1m[why-override] Warning: ${message}\u001b[0m`);
 }
-

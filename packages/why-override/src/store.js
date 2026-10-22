@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { parse } from "jsonc-parser/lib/esm/main.js";
 import { warnDiagnostic } from "./color.js";
 import { formatSelector, getOverrideTarget, selectorKey } from "./selectors.js";
 
@@ -114,10 +113,7 @@ export function loadReasonStore(reasonStorePath, reasonStoreFilename) {
     }
   }
 
-  const parseErrors = [];
-  let reasonDocument = reasonStoreMissing
-    ? undefined
-    : parse(reasonText, parseErrors, { allowTrailingComma: true });
+  let reasonDocument;
   let reasonStoreWritable = true;
 
   if (reasonStoreMissing) {
@@ -126,15 +122,24 @@ export function loadReasonStore(reasonStorePath, reasonStoreFilename) {
     );
     reasonDocument = { version: 1, reasons: [] };
     reasonText = `${JSON.stringify(reasonDocument, null, 2)}\n`;
-  } else if (
-    parseErrors.length > 0 ||
-    !Array.isArray(reasonDocument?.reasons)
-  ) {
-    warnDiagnostic(
-      `${reasonStoreFilename} is malformed; saved reasons cannot be read or updated.`,
-    );
-    reasonDocument = { version: 1, reasons: [] };
-    reasonStoreWritable = false;
+  } else {
+    try {
+      reasonDocument = JSON.parse(reasonText);
+    } catch {
+      reasonDocument = undefined;
+    }
+
+    if (
+      reasonDocument === null ||
+      typeof reasonDocument !== "object" ||
+      !Array.isArray(reasonDocument?.reasons)
+    ) {
+      warnDiagnostic(
+        `${reasonStoreFilename} is malformed; saved reasons cannot be read or updated.`,
+      );
+      reasonDocument = { version: 1, reasons: [] };
+      reasonStoreWritable = false;
+    }
   }
 
   return {

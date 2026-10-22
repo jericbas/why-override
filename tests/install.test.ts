@@ -12,10 +12,10 @@ import {
 test("interactive npm install saves a reason and displays it next time", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     await writeFile(
       reasonStorePath,
-      '{\n  "version": 1,\n  // Reasons are reviewed with dependency changes.\n  "reasons": []\n}\n',
+      '{\n  "version": 1,\n  "reasons": []\n}\n',
     );
 
     const result = await runInteractiveNpm(
@@ -30,9 +30,6 @@ test("interactive npm install saves a reason and displays it next time", async (
 
     const reasonStoreText = await readFile(reasonStorePath, "utf8");
     const reasonStore = parseJSONC(reasonStoreText);
-    expect(reasonStoreText).toContain(
-      "// Reasons are reviewed with dependency changes.",
-    );
     expect(reasonStore.reasons).toHaveLength(1);
     expect(reasonStore.reasons[0]).toMatchObject({
       selector: ["is-number"],
@@ -64,7 +61,7 @@ test("interactive npm install saves a reason and displays it next time", async (
 test("empty interactive answer leaves the reason store unchanged", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -91,7 +88,7 @@ test("empty interactive answer leaves the reason store unchanged", async () => {
 test("non-TTY npm install skips undocumented reasons", async () => {
   const fixtureRoot = await createFixture(undefined, 120);
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -122,7 +119,7 @@ for (const command of ["install", "ci"]) {
     const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
     try {
       await writeFile(
-        join(fixtureRoot, ".override-reasons.jsonc"),
+        join(fixtureRoot, ".override-reasons.json"),
         JSON.stringify(
           {
             version: 1,

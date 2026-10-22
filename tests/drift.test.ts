@@ -22,7 +22,7 @@ test("changing only an override target leaves its reason record unchanged", asyn
     manifest.overrides["is-number"] = "7.0.1";
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const record = {
       selector: ["is-number"],
       reason: "Original rationale.",
@@ -56,7 +56,7 @@ test("changing only an override target leaves its reason record unchanged", asyn
 test("recorded target drift warns without changing the reason store", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.1" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const originalReasonStore = JSON.stringify(
       {
         version: 1,
@@ -95,7 +95,7 @@ test("optional workspaces are displayed and invalid values are malformed", async
   try {
     const timestamp = new Date().toISOString();
     await writeFile(
-      join(fixtureRoot, ".override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.json"),
       JSON.stringify(
         {
           version: 1,

@@ -1,9 +1,12 @@
 {
-  "lockfileVersion": 2,
+  "lockfileVersion": 3,
   "configVersion": 1,
   "workspaces": {
     "": {
       "name": "why-override",
+      "dependencies": {
+        "@why-override/demo": "^0.1.0",
+      },
       "devDependencies": {
         "@biomejs/biome": "^2.2.0",
       },
@@ -12,6 +15,7 @@
       "name": "@why-override/demo",
       "version": "0.1.0",
       "dependencies": {
+        "chalk": "1.0.0",
         "is-odd": "^3.0.1",
       },
       "devDependencies": {
@@ -20,17 +24,17 @@
     },
     "packages/why-override": {
       "name": "why-override",
-      "version": "0.1.0",
+      "version": "1.1.0",
       "bin": {
         "why-override": "./dist/cli.js",
-      },
-      "devDependencies": {
-        "jsonc-parser": "^3.3.1",
       },
     },
   },
   "overrides": {
-    "is-number": "7.0.0",
+    "chalk": "1.0.0",
+    "is-odd": {
+      "is-number": "7.0.0",
+    },
   },
   "packages": {
     "@biomejs/biome": ["@biomejs/biome@2.5.15", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.5.15", "@biomejs/cli-darwin-x64": "2.5.15", "@biomejs/cli-linux-arm64": "2.5.15", "@biomejs/cli-linux-arm64-musl": "2.5.15", "@biomejs/cli-linux-x64": "2.5.15", "@biomejs/cli-linux-x64-musl": "2.5.15", "@biomejs/cli-win32-arm64": "2.5.15", "@biomejs/cli-win32-x64": "2.5.15" }, "bin": { "biome": "bin/biome" } }, "sha512-WZTW4slm/pdkh92K6t/3aEN++44JD1PQ7squ7RCMLI1flHGl43DVOIGXvCjHiZgBMO1V4uYxoFNtqrIA4qGuIQ=="],
@@ -53,11 +57,25 @@
 
     "@why-override/demo": ["@why-override/demo@workspace:apps/demo"],
 
+    "ansi-regex": ["ansi-regex@1.1.1", "", {}, "sha512-q5i8bFLg2wDfsuR56c1NzlJFPzVD+9mxhDrhqOGigEFa87OZHlF+9dWeGWzVTP/0ECiA/JUGzfzRr2t3eYORRw=="],
+
+    "ansi-styles": ["ansi-styles@2.2.1", "", {}, "sha512-kmCevFghRiWM7HB5zTPULl4r9bVFSWjz62MhqizDGUrq2NWuNMQyuv4tHHoKJHs69M/MF64lEcHdYIocrdWQYA=="],
+
+    "chalk": ["chalk@1.0.0", "", { "dependencies": { "ansi-styles": "^2.0.1", "escape-string-regexp": "^1.0.2", "has-ansi": "^1.0.3", "strip-ansi": "^2.0.1", "supports-color": "^1.3.0" } }, "sha512-1TE3hpADga5iWinlcCpyhC7fTl9uQumLD8i2jJoJeVg7UbveY5jj7F6uCq8w0hQpSeLhaPn5QFe8e56toMVP1A=="],
+
+    "escape-string-regexp": ["escape-string-regexp@1.0.5", "", {}, "sha512-vbRorB5FUQWvla16U8R/qgaFIya2qGzwDrNmCZuYKrbdSUMG6I1ZCGQRefkRVhuOkIGVne7BQ35DSfo1qvJqFg=="],
+
+    "get-stdin": ["get-stdin@4.0.1", "", {}, "sha512-F5aQMywwJ2n85s4hJPTT9RPxGmubonuB10MNYo17/xph174n2MIR33HRguhzVag10O/npM7SPk73LMZNP+FaWw=="],
+
+    "has-ansi": ["has-ansi@1.0.3", "", { "dependencies": { "ansi-regex": "^1.1.0", "get-stdin": "^4.0.1" }, "bin": { "has-ansi": "cli.js" } }, "sha512-XwLzIec2hoj/LW9F3nCcQpEwZ5fDJ1LOc6SAgc0pz79CGiY9zmZhIkbf7OnK+tC36UhpQBa03HPt13QavGoF6Q=="],
+
     "is-number": ["is-number@7.0.0", "", {}, "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng=="],
 
     "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA=="],
 
-    "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
+    "strip-ansi": ["strip-ansi@2.0.1", "", { "dependencies": { "ansi-regex": "^1.0.0" }, "bin": { "strip-ansi": "cli.js" } }, "sha512-2h8q2CP3EeOhDJ+jd932PRMpa3/pOJFGoF22J1U/DNbEK2gSW2DqeF46VjCXsSQXhC+k/l8/gaaRBQKL6hUPfQ=="],
+
+    "supports-color": ["supports-color@1.3.1", "", { "bin": { "supports-color": "cli.js" } }, "sha512-OHbMkscHFRcNWEcW80fYhCrzAjheSIBwJChpFaBqA6zEz53nxumqi6ukciRb/UA0/v2nDNMk28ce/uBbYRDsng=="],
 
     "why-override": ["why-override@workspace:packages/why-override"],
   }

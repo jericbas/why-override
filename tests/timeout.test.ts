@@ -6,7 +6,7 @@ import { createFixture, parseJSONC, runInteractiveNpm } from "./helpers.ts";
 test("interactive prompt uses env timeout before project config", async () => {
   const fixtureRoot = await createFixture(undefined, 5);
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -39,7 +39,7 @@ test("interactive prompt uses project timeout when env is absent", async () => {
   const fixtureRoot = await createFixture(undefined, 1);
   try {
     await writeFile(
-      join(fixtureRoot, ".override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.json"),
       JSON.stringify({ version: 1, reasons: [] }, null, 2),
     );
     const result = await runInteractiveNpm(fixtureRoot, [
@@ -59,7 +59,7 @@ test("interactive prompt uses project timeout when env is absent", async () => {
 test("invalid env timeout warns and falls back to ten seconds", async () => {
   const fixtureRoot = await createFixture(undefined, 1);
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const emptyReasonStore = JSON.stringify(
       { version: 1, reasons: [] },
       null,
@@ -92,7 +92,7 @@ test("invalid project timeout warns and falls back to ten seconds", async () => 
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" }, 1.5);
   try {
     await writeFile(
-      join(fixtureRoot, ".override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.json"),
       JSON.stringify({ version: 1, reasons: [] }, null, 2),
     );
     const result = await runInteractiveNpm(
@@ -112,7 +112,7 @@ test("invalid project timeout warns and falls back to ten seconds", async () => 
 test("typing input resets countdown timer and avoids premature timeout", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" }, 2);
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     await writeFile(
       reasonStorePath,
       JSON.stringify({ version: 1, reasons: [] }, null, 2),

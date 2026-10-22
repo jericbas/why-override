@@ -1,5 +1,4 @@
 import { writeFileSync } from "node:fs";
-import { applyEdits, modify } from "jsonc-parser/lib/esm/main.js";
 import { color } from "./color.js";
 import { askForExplanation } from "./prompt.js";
 import { askForPackageSelection } from "./selection.js";
@@ -17,9 +16,6 @@ export function updateSelectorReason(context, selector, explanation) {
   );
   const displaySelector = formatSelector(selector);
   const currentTarget = getOverrideTarget(manifest, selector);
-  const formattingOptions = {
-    formattingOptions: { insertSpaces: true, tabSize: 2 },
-  };
 
   if (recordIndex >= 0) {
     const record = reasonDocument.reasons[recordIndex];
@@ -31,40 +27,12 @@ export function updateSelectorReason(context, selector, explanation) {
     }
 
     const updatedAt = new Date().toISOString();
-    context.reasonText = applyEdits(
-      context.reasonText,
-      modify(
-        context.reasonText,
-        ["reasons", recordIndex, "reason"],
-        explanation,
-        formattingOptions,
-      ),
-    );
-    context.reasonText = applyEdits(
-      context.reasonText,
-      modify(
-        context.reasonText,
-        ["reasons", recordIndex, "updatedAt"],
-        updatedAt,
-        formattingOptions,
-      ),
-    );
-    if (currentTarget !== undefined) {
-      context.reasonText = applyEdits(
-        context.reasonText,
-        modify(
-          context.reasonText,
-          ["reasons", recordIndex, "target"],
-          currentTarget,
-          formattingOptions,
-        ),
-      );
-    }
     record.reason = explanation;
     record.updatedAt = updatedAt;
     if (currentTarget !== undefined) {
       record.target = currentTarget;
     }
+    context.reasonText = `${JSON.stringify(reasonDocument, null, 2)}\n`;
     reasonsBySelector.set(key, explanation);
     console.log(`Refreshed reason for ${displaySelector}.`);
     return true;
@@ -78,18 +46,12 @@ export function updateSelectorReason(context, selector, explanation) {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  const edits = modify(
-    context.reasonText,
-    ["reasons", reasonDocument.reasons.length],
-    record,
-    formattingOptions,
-  );
-  context.reasonText = applyEdits(context.reasonText, edits);
+  reasonDocument.reasons.push(record);
+  context.reasonText = `${JSON.stringify(reasonDocument, null, 2)}\n`;
   if (context.reasonStoreMissing) {
     console.log(`Created ${reasonStorePath}.`);
     context.reasonStoreMissing = false;
   }
-  reasonDocument.reasons.push(record);
   reasonsBySelector.set(key, explanation);
   console.log(`Refreshed reason for ${displaySelector}.`);
   return true;

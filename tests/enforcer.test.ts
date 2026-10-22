@@ -36,7 +36,7 @@ test("enforcer matches exact nested selector paths and rejects wildcard keys", a
       updatedAt: "2026-10-15T00:00:00.000Z",
     }));
     await writeFile(
-      join(fixtureRoot, ".override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.json"),
       JSON.stringify({ version: 1, reasons: records }, null, 2),
     );
 
@@ -61,7 +61,7 @@ test("interactive prompt allows selecting an existing reason by number and displ
     "is-number": "7.0.0",
   });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const existingReason = "Shared upstream compatibility workaround.";
     const timestamp = new Date().toISOString();
     await writeFile(
@@ -90,7 +90,7 @@ test("interactive prompt allows selecting an existing reason by number and displ
     expect(result.output).toContain("Existing reasons:");
     expect(result.output).toContain(`1) ${existingReason}`);
     expect(result.output).toContain(
-      "Note: please check .override-reasons.jsonc if you want to check and edit reasons manually.",
+      "Note: please check .override-reasons.json if you want to check and edit reasons manually.",
     );
     expect(result.output).toContain(`Selected: ${existingReason}`);
 
@@ -106,16 +106,15 @@ test("interactive prompt allows selecting an existing reason by number and displ
   }
 });
 
-test("enforcer displays note pointing to .override-reasons.jsonc", async () => {
+test("enforcer displays note pointing to .override-reasons.json", async () => {
   const fixtureRoot = await createFixture();
   try {
     const result = await runEnforcer(fixtureRoot);
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain(
-      "Note: please check .override-reasons.jsonc if you want to check and edit reasons manually.",
+      "Note: please check .override-reasons.json if you want to check and edit reasons manually.",
     );
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 });
-
