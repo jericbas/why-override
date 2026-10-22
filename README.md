@@ -149,7 +149,15 @@ bun run demo
 
 ### Re-entering or updating reasons
 
-To re-enter or update explanations across all overrides interactively, pass `--reenter`:
+To interactively select which package(s) to refresh, run:
+
+```sh
+npx why-override refresh
+```
+
+You will see a numbered list of overrides to choose from. You can enter a single package number (e.g. `1`), multiple packages separated by commas or spaces (e.g. `1, 2`), a range (e.g. `1-3`), or `'all'`. When multiple packages are selected, you can provide a single reason that is applied to all of them at once.
+
+To re-enter or update explanations across all overrides one-by-one, pass `--reenter` or `--all`:
 
 ```sh
 npx why-override --reenter
@@ -159,13 +167,15 @@ npx why-override refresh --all
 
 Pressing Enter on an existing override without entering a new reason keeps the current reason unchanged.
 
-To refresh a single specific override reason, pass its selector path as a JSON array:
+To refresh specific override reasons directly without the selection menu, pass their selector path as a JSON array:
 
 ```sh
 npx why-override refresh '["is-number"]'
 # nested override:
 npx why-override refresh '["packageA", "packageB"]'
 npx why-override refresh '["parent", "."]'
+# multiple overrides sharing one reason:
+npx why-override refresh '[["packageA"], ["packageB"]]'
 ```
 
 A changed explanation preserves `createdAt` and updates `updatedAt`; submitting the same explanation leaves timestamps unchanged.
