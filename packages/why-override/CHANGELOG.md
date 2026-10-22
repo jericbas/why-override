@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/jericbas/why-override/compare/v1.3.0...v1.3.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **security:** trigger patch release for supply chain and provenance updates ([518f24f](https://github.com/jericbas/why-override/commit/518f24ff04a52faa30cbe6386913dc99b445d6b0))
+* **security:** trigger patch release for supply chain and provenance updates ([77af05e](https://github.com/jericbas/why-override/commit/77af05e083c547704f8221b8cb2bad7a3d70664e))
+
 ## [1.3.0](https://github.com/jericbas/why-override/compare/v1.2.0...v1.3.0) (2026-10-22)
 
 
