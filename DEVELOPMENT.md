@@ -113,3 +113,34 @@ Automated releases and npm publishing are handled by [Google's Release Please](h
 
 If an emergency manual publish is required, use GitHub Actions' `workflow_dispatch` on the `Release Please` workflow with `force_publish: true`.
 
+### Pre-releases
+
+Pre-releases (e.g., `alpha`, `beta`, `rc`, `next`) allow testing upcoming changes without affecting production users.
+
+#### 1. Dist-tag requirement
+npm assigns the `latest` dist-tag by default. **Pre-releases must always be published with a custom tag** (such as `--tag beta` or `--tag next`):
+```sh
+npm publish --workspace=packages/why-override --access public --tag beta
+```
+This ensures standard installations (`npm install why-override` or `npx why-override`) continue to pull stable versions, while testers opt-in with:
+```sh
+npm install why-override@beta
+# or
+npx why-override@next
+```
+
+#### 2. Pre-release approaches
+
+- **Canary / On-demand pre-releases via GitHub Actions:**
+  Trigger the automated **Publish Prerelease** workflow (`.github/workflows/prerelease.yml`) via `workflow_dispatch` in GitHub Actions:
+  1. Select the target branch.
+  2. Choose the dist-tag (`beta`, `alpha`, `next`, `canary`, or `rc`).
+  3. Select the bump strategy:
+     - `prerelease`: increments existing pre-release index (e.g. `1.3.1-beta.0` -> `1.3.1-beta.1`).
+     - `prepatch` / `preminor` / `premajor`: steps the base SemVer version (e.g. `1.3.0` -> `1.4.0-beta.0`).
+     - `canary-sha`: generates an ephemeral commit-hash version (e.g. `1.3.0-beta.a1b2c3d`).
+  4. (Optional) Enable `dry_run` to verify packaging without publishing to npm.
+- **Branch-based via Release Please (Alternative for long staging branches):**
+  Maintain a dedicated pre-release branch (e.g., `next` or `beta`). Configure Release Please to listen to the branch and manage pre-release SemVer bumps. When merged to `next`, CI publishes to npm using `--tag beta` / `--tag next`. When stabilized, merge `next` into `main` to trigger the standard `latest` release.
+
+
