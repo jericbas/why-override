@@ -31,7 +31,7 @@ Keep the actual override declarations in the project root `package.json`:
 }
 ```
 
-Create `.override-reasons.jsonc` in the same directory. Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
+Create `.override-reasons.jsonc` in the same directory (see [.override-reasons.jsonc](../../.override-reasons.jsonc) for a working demo example). Each record identifies an exact selector path as an array of literal selector segments, has a non-empty explanation, and includes UTC timestamps:
 
 ```jsonc
 {
@@ -131,7 +131,11 @@ Documented reasons are displayed in a formatted, color-coded table showing the p
 └─────────────┴──────────┴───────────┴─────────────────────┴──────────────────────┘
 ```
 
-For undocumented selectors, an interactive terminal asks `Why do you need to override this? <selector> (auto-skips in 10s)` with a real-time countdown. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason.
+For undocumented selectors, an interactive terminal asks `Why do you need to override this? <selector> (auto-skips in 10s)` with a real-time countdown. Whenever you type input, the countdown timer resets automatically using a debounced handler so you are never cut off mid-sentence.
+
+If any reasons have already been entered in the project, the prompt displays them as a numbered list (`1..N`). You can enter a number to reuse an existing rationale or type a new one.
+
+A reminder note is also displayed directing you to `.override-reasons.jsonc` if you want to inspect or edit reasons manually. A non-empty answer is saved with matching creation and update timestamps. Empty answers, timeouts, and non-TTY installs do not add a reason.
 
 ### Running with package managers
 
@@ -149,6 +153,14 @@ pnpm why-override
 
 # bun
 bun why-override
+```
+
+### Running the demo
+
+To inspect a realistic demo setup with documented overrides and reasons, see [.override-reasons.jsonc](../../.override-reasons.jsonc) and run:
+
+```sh
+bun run demo
 ```
 
 ### Re-entering or updating reasons
@@ -203,6 +215,28 @@ Reasons last updated 30 days ago or more receive a review advisory. Reasons whos
 The automatic npm hook covers bare local `npm install` and `npm ci` when lifecycle scripts are enabled. It does not cover package-argument installs, global installs, or commands run with `--ignore-scripts`.
 
 npm applies overrides from the project root manifest. An override declared in a workspace member is not an independent effective override.
+
+## Frequently Asked Questions (FAQ)
+
+### Does `why-override` prompt for overrides declared in workspace member manifests (e.g. `apps/demo/package.json`)?
+
+No. In npm workspaces, npm ignores the `overrides` field in workspace member manifests. According to [npm's documentation](https://docs.npmjs.com/cli/configuring-npm/package-json#overrides), overrides are only evaluated and applied from the **root** `package.json` of a project.
+
+Because overrides in workspace members have no effect on npm dependency resolution, `why-override` only inspects and prompts for overrides declared in the root `package.json`.
+
+If an override is needed specifically for a workspace member, declare it in the root `package.json` and use the optional `workspaces` field in `.override-reasons.jsonc` to document which workspaces require it:
+
+```jsonc
+{
+  "selector": ["is-number"],
+  "reason": "Compatibility requirement for demo workspace.",
+  "workspaces": ["@why-override/demo"]
+}
+```
+
+### How do I check or edit reasons manually?
+
+Reasons are stored as JSONC in `.override-reasons.jsonc` at the root of your project. You can inspect, modify, or add comments to this file directly in your code editor at any time (see [.override-reasons.jsonc](../../.override-reasons.jsonc) for a realistic demo example).
 
 ## License
 

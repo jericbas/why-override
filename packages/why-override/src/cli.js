@@ -289,6 +289,14 @@ function printOverrideTable(entries) {
   });
   output.push(border("└", "┴", "┘"));
   console.log(output.join("\n"));
+
+  for (const entry of entries) {
+    if (entry.workspacesText) {
+      console.log(
+        `Override ${formatSelector(entry.selector)}${entry.workspacesText}: ${entry.reason}`,
+      );
+    }
+  }
 }
 
 function warnDiagnostic(message) {
@@ -326,13 +334,41 @@ function isUtcTimestamp(value) {
 
 function isValidReasonRecord(record) {
   const selector = getRecordSelector(record);
-  return (
-    selector !== undefined &&
-    typeof record.reason === "string" &&
-    record.reason.trim() !== "" &&
-    isUtcTimestamp(record.createdAt) &&
-    isUtcTimestamp(record.updatedAt)
-  );
+  if (
+    selector === undefined ||
+    (typeof record.reason === "string" && record.reason.trim() === "") ||
+    typeof record.reason !== "string" ||
+    !isUtcTimestamp(record.createdAt) ||
+    !isUtcTimestamp(record.updatedAt)
+  ) {
+    return false;
+  }
+  if (record.target !== undefined && typeof record.target !== "string") {
+    return false;
+  }
+  if (
+    record.workspaces !== undefined &&
+    (!Array.isArray(record.workspaces) ||
+      record.workspaces.length === 0 ||
+      !record.workspaces.every(
+        (workspace) => typeof workspace === "string" && workspace.length > 0,
+      ))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function debounce(fn, waitMs = 300) {
+  let timer;
+  const debounced = (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), waitMs);
+  };
+  debounced.cancel = () => {
+    clearTimeout(timer);
+  };
+  return debounced;
 }
 
 const defaultPromptTimeoutSeconds = 10;
@@ -382,6 +418,7 @@ if (reasonStoreMissing) {
 const selectors = collectOverrideSelectors(manifest.overrides);
 const activeSelectorKeys = new Set(selectors.map(selectorKey));
 const reasonsBySelector = new Map();
+const workspacesBySelector = new Map();
 const minimumReviewAgeMilliseconds = 30 * 24 * 60 * 60 * 1000;
 
 for (const record of reasonDocument.reasons) {
@@ -405,6 +442,24 @@ for (const record of reasonDocument.reasons) {
   }
 
   reasonsBySelector.set(key, record.reason);
+  if (Array.isArray(record.workspaces) && record.workspaces.length > 0) {
+    workspacesBySelector.set(
+      key,
+      ` [workspaces: ${record.workspaces.join(", ")}]`,
+    );
+  }
+
+  const currentTarget = getOverrideTarget(selector);
+  if (
+    record.target !== undefined &&
+    currentTarget !== undefined &&
+    record.target !== currentTarget
+  ) {
+    warnDiagnostic(
+      `override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`,
+    );
+  }
+
   if (
     Date.now() - Date.parse(record.updatedAt) >=
     minimumReviewAgeMilliseconds
@@ -413,6 +468,25 @@ for (const record of reasonDocument.reasons) {
       `Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`,
     );
   }
+}
+
+function getExistingReasons() {
+  const reasons = [];
+  const seen = new Set();
+  for (const record of reasonDocument?.reasons ?? []) {
+    if (
+      isValidReasonRecord(record) &&
+      typeof record.reason === "string" &&
+      record.reason.trim() !== ""
+    ) {
+      const trimmed = record.reason.trim();
+      if (!seen.has(trimmed)) {
+        seen.add(trimmed);
+        reasons.push(trimmed);
+      }
+    }
+  }
+  return reasons;
 }
 
 const promptTimeoutSeconds = getPromptTimeoutSeconds();
@@ -425,44 +499,94 @@ async function askForExplanation(displaySelector) {
     return undefined;
   }
 
+  const existingReasons = getExistingReasons();
+  if (existingReasons.length > 0) {
+    console.log("Existing reasons:");
+    existingReasons.forEach((reason, index) => {
+      console.log(`  ${index + 1}) ${reason}`);
+    });
+    console.log(
+      color.dim(
+        `Type a reason, or enter 1-${existingReasons.length} to select an existing one.`,
+      ),
+    );
+  }
+
   let timeoutHandle;
   let countdownHandle;
   const timeoutToken = Symbol("prompt-timeout");
   const closeToken = Symbol("prompt-close");
   const formatQuestion = (secondsLeft) =>
-    `Why do you need to override this? ${displaySelector} (auto-skips in ${secondsLeft}s)`;
-  const deadline = Date.now() + promptTimeoutSeconds * 1000;
-  const questionPromise = promptInterface
-    .question(`${formatQuestion(promptTimeoutSeconds)}\n`)
-    .catch(() => closeToken);
+    `${color.cyan("Why do you need to override this?")} ${color.yellow(color.bold(displaySelector))} ${color.dim(`(auto-skips in ${secondsLeft}s)`)}`;
+  let deadline = Date.now() + promptTimeoutSeconds * 1000;
+
+  const renderQuestion = (secondsLeft) => {
+    if (!process.stdout.isTTY) {
+      return;
+    }
+    const rowsBelowQuestion = promptInterface.getCursorPos().rows;
+    process.stdout.write("\x1b7");
+    moveCursor(process.stdout, 0, -rowsBelowQuestion);
+    cursorTo(process.stdout, 0);
+    clearLine(process.stdout, 0);
+    process.stdout.write(formatQuestion(secondsLeft));
+    process.stdout.write("\x1b8");
+  };
+
+  let resolveTimeoutPromise;
+  const timeoutPromise = new Promise((resolve) => {
+    resolveTimeoutPromise = resolve;
+  });
+
+  const armTimeout = () => {
+    clearTimeout(timeoutHandle);
+    const msRemaining = Math.max(0, deadline - Date.now());
+    timeoutHandle = setTimeout(
+      () => resolveTimeoutPromise(timeoutToken),
+      msRemaining,
+    );
+  };
+
+  armTimeout();
+
   if (process.stdout.isTTY) {
     countdownHandle = setInterval(() => {
       const secondsLeft = Math.max(
         0,
         Math.ceil((deadline - Date.now()) / 1000),
       );
-      // The question sits on the line above the input; rewrite it in place
-      // without disturbing what the user has typed so far.
-      const rowsBelowQuestion = promptInterface.getCursorPos().rows;
-      process.stdout.write("\x1b7");
-      moveCursor(process.stdout, 0, -rowsBelowQuestion);
-      cursorTo(process.stdout, 0);
-      clearLine(process.stdout, 0);
-      process.stdout.write(formatQuestion(secondsLeft));
-      process.stdout.write("\x1b8");
+      renderQuestion(secondsLeft);
     }, 1000);
   }
-  const response = await Promise.race([
-    questionPromise,
-    new Promise((resolveTimeout) => {
-      timeoutHandle = setTimeout(
-        () => resolveTimeout(timeoutToken),
-        promptTimeoutSeconds * 1000,
-      );
-    }),
-  ]);
-  clearTimeout(timeoutHandle);
-  clearInterval(countdownHandle);
+
+  const debouncedResetTimer = debounce(() => {
+    deadline = Date.now() + promptTimeoutSeconds * 1000;
+    armTimeout();
+    renderQuestion(promptTimeoutSeconds);
+  }, 300);
+
+  const onInput = () => {
+    deadline = Date.now() + promptTimeoutSeconds * 1000;
+    clearTimeout(timeoutHandle);
+    debouncedResetTimer();
+  };
+
+  process.stdin.on("data", onInput);
+
+  let response;
+  try {
+    const questionPromise = promptInterface
+      .question(`${formatQuestion(promptTimeoutSeconds)}\n`)
+      .catch(() => closeToken);
+
+    response = await Promise.race([questionPromise, timeoutPromise]);
+  } finally {
+    process.stdin.removeListener("data", onInput);
+    debouncedResetTimer.cancel();
+    clearTimeout(timeoutHandle);
+    clearInterval(countdownHandle);
+  }
+
   if (response === timeoutToken) {
     console.warn(
       `Timed out after ${promptTimeoutSeconds} seconds; skipping ${displaySelector}.`,
@@ -474,7 +598,18 @@ async function askForExplanation(displaySelector) {
     return undefined;
   }
 
-  return response.trim();
+  const trimmed = response.trim();
+  const optionMatch = trimmed.match(/^#?([1-9]\d*)$/);
+  if (optionMatch) {
+    const optionIndex = Number(optionMatch[1]) - 1;
+    if (optionIndex >= 0 && optionIndex < existingReasons.length) {
+      const selected = existingReasons[optionIndex];
+      console.log(`Selected: ${selected}`);
+      return selected;
+    }
+  }
+
+  return trimmed;
 }
 
 async function refreshReason(selector) {
@@ -503,7 +638,10 @@ async function refreshReason(selector) {
   }
 
   const record = reasonDocument.reasons[recordIndex];
-  if (explanation === record.reason) {
+  const currentTarget = getOverrideTarget(selector);
+  const targetChanged =
+    currentTarget !== undefined && currentTarget !== record.target;
+  if (explanation === record.reason && !targetChanged) {
     console.log(`Reason unchanged for ${displaySelector}.`);
     return;
   }
@@ -512,22 +650,41 @@ async function refreshReason(selector) {
   const formattingOptions = {
     formattingOptions: { insertSpaces: true, tabSize: 2 },
   };
-  const edits = [
-    ...modify(
+  reasonText = applyEdits(
+    reasonText,
+    modify(
       reasonText,
       ["reasons", recordIndex, "reason"],
       explanation,
       formattingOptions,
     ),
-    ...modify(
+  );
+  reasonText = applyEdits(
+    reasonText,
+    modify(
       reasonText,
       ["reasons", recordIndex, "updatedAt"],
       updatedAt,
       formattingOptions,
     ),
-  ];
-  reasonText = applyEdits(reasonText, edits);
+  );
+  if (currentTarget !== undefined) {
+    reasonText = applyEdits(
+      reasonText,
+      modify(
+        reasonText,
+        ["reasons", recordIndex, "target"],
+        currentTarget,
+        formattingOptions,
+      ),
+    );
+  }
   writeFileSync(reasonStorePath, reasonText);
+  record.reason = explanation;
+  record.updatedAt = updatedAt;
+  if (currentTarget !== undefined) {
+    record.target = currentTarget;
+  }
   console.log(`Refreshed reason for ${displaySelector}.`);
 }
 
@@ -536,6 +693,13 @@ try {
     if (process.argv[3] === "--all" || process.argv[3] === "-a") {
       for (const selector of selectors) {
         await refreshReason(selector);
+      }
+      if (selectors.length > 0) {
+        console.log(
+          color.dim(
+            `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
+          ),
+        );
       }
     } else {
       let selector;
@@ -559,6 +723,11 @@ try {
         process.exitCode = 1;
       } else {
         await refreshReason(selector);
+        console.log(
+          color.dim(
+            `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
+          ),
+        );
       }
     }
   } else {
@@ -567,10 +736,14 @@ try {
 
     printOverrideTable(
       selectors
-        .map((selector) => ({
-          selector,
-          reason: reasonsBySelector.get(selectorKey(selector)),
-        }))
+        .map((selector) => {
+          const key = selectorKey(selector);
+          return {
+            selector,
+            reason: reasonsBySelector.get(key),
+            workspacesText: workspacesBySelector.get(key),
+          };
+        })
         .filter(
           ({ reason }) => typeof reason === "string" && reason.trim() !== "",
         ),
@@ -606,9 +779,11 @@ try {
       }
 
       const timestamp = new Date().toISOString();
+      const currentTarget = getOverrideTarget(selector);
       const record = {
         selector,
         reason: explanation,
+        ...(currentTarget !== undefined ? { target: currentTarget } : {}),
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -626,6 +801,14 @@ try {
       }
       reasonDocument.reasons.push(record);
       reasonsBySelector.set(key, explanation);
+    }
+
+    if (selectors.length > 0) {
+      console.log(
+        color.dim(
+          `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
+        ),
+      );
     }
   }
 } finally {
