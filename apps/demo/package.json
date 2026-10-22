@@ -13,8 +13,5 @@
   },
   "devDependencies": {
     "why-override": "file:../../packages/why-override"
-  },
-  "overrides": {
-    "is-number": "7.0.0"
   }
 }

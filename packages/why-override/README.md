@@ -208,6 +208,28 @@ The automatic npm hook covers bare local `npm install` and `npm ci` when lifecyc
 
 npm applies overrides from the project root manifest. An override declared in a workspace member is not an independent effective override.
 
+## Frequently Asked Questions (FAQ)
+
+### Does `why-override` prompt for overrides declared in workspace member manifests (e.g. `apps/demo/package.json`)?
+
+No. In npm workspaces, npm ignores the `overrides` field in workspace member manifests. According to [npm's documentation](https://docs.npmjs.com/cli/configuring-npm/package-json#overrides), overrides are only evaluated and applied from the **root** `package.json` of a project.
+
+Because overrides in workspace members have no effect on npm dependency resolution, `why-override` only inspects and prompts for overrides declared in the root `package.json`.
+
+If an override is needed specifically for a workspace member, declare it in the root `package.json` and use the optional `workspaces` field in `.override-reasons.jsonc` to document which workspaces require it:
+
+```jsonc
+{
+  "selector": ["is-number"],
+  "reason": "Compatibility requirement for demo workspace.",
+  "workspaces": ["@why-override/demo"]
+}
+```
+
+### How do I check or edit reasons manually?
+
+Reasons are stored as JSONC in `.override-reasons.jsonc` at the root of your project. You can inspect, modify, or add comments to this file directly in your code editor at any time.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
