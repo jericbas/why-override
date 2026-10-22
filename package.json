@@ -8,6 +8,7 @@
     "apps/*"
   ],
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "preinstall": "node packages/why-override/dist/cli.js",
     "build": "bun build packages/why-override/src/cli.js --target=node --outfile=packages/why-override/dist/cli.js",
     "test": "bun test --timeout=20000",
