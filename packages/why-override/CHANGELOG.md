@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/jericbas/why-override/compare/v1.2.0...v1.3.0) (2026-10-22)
+
+
+### Features
+
+* **cli:** add check, prune, doctor commands and multi-pm support ([cf8bbb0](https://github.com/jericbas/why-override/commit/cf8bbb06975bcb0924ca21dab570102ce58b0b9e))
+* **cli:** add check, prune, doctor commands and multi-pm support ([8cbe189](https://github.com/jericbas/why-override/commit/8cbe189eadbcb19e3079b7b1c3ecca1c1b816034))
+
 ## [1.2.0](https://github.com/jericbas/why-override/compare/v1.1.0...v1.2.0) (2026-10-22)
 
 
