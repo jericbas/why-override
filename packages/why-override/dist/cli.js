@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // packages/why-override/src/cli.js
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { basename, resolve as resolve3 } from "node:path";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4 } from "node:fs";
+import { basename, resolve as resolve4 } from "node:path";
 import { createInterface } from "node:readline/promises";
 
 // packages/why-override/src/color.js
@@ -11,6 +11,7 @@ var ansi = (code) => (text) => useColor ? `\x1B[${code}m${text}\x1B[0m` : text;
 var color = {
   bold: ansi("1"),
   dim: ansi("2"),
+  red: ansi("31"),
   cyan: ansi("36;1"),
   green: ansi("32"),
   yellow: ansi("33"),
@@ -20,23 +21,31 @@ function warnDiagnostic(message) {
   console.warn(`\x1B[33;1m[why-override] Warning: ${message}\x1B[0m`);
 }
 
-// packages/why-override/src/enforce.js
-import { writeFileSync as writeFileSync2 } from "node:fs";
-
-// packages/why-override/src/prompt.js
-import { clearLine, cursorTo, moveCursor } from "node:readline";
-
-// packages/why-override/src/store.js
-import { readFileSync as readFileSync2 } from "node:fs";
-
 // packages/why-override/src/selectors.js
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+function parseSelectorSegments(key) {
+  if (!key.includes("/")) {
+    return [key];
+  }
+  const parts = key.split("/");
+  const segments = [];
+  for (let i = 0;i < parts.length; i++) {
+    if (parts[i].startsWith("@") && i + 1 < parts.length) {
+      segments.push(`${parts[i]}/${parts[i + 1]}`);
+      i++;
+    } else {
+      segments.push(parts[i]);
+    }
+  }
+  return segments;
+}
 function collectOverrideSelectors(overrides, parentPath = []) {
   const selectors = [];
   for (const [key, value] of Object.entries(overrides ?? {})) {
-    const selector = [...parentPath, key];
-    if (key.includes("*")) {
+    const segments = parseSelectorSegments(key);
+    const selector = [...parentPath, ...segments];
+    if (selector.some((segment) => segment.includes("*"))) {
       console.warn(`Warning: unsupported wildcard override selector ${JSON.stringify(selector)}; skipping.`);
       continue;
     }
@@ -50,6 +59,28 @@ function collectOverrideSelectors(overrides, parentPath = []) {
 }
 function selectorKey(selector) {
   return JSON.stringify(selector);
+}
+function collectAllManifestSelectors(manifest) {
+  const sources = [
+    manifest?.overrides,
+    manifest?.pnpm?.overrides,
+    manifest?.resolutions
+  ];
+  const seen = new Set;
+  const allSelectors = [];
+  for (const source of sources) {
+    if (source && typeof source === "object" && !Array.isArray(source)) {
+      const selectors = collectOverrideSelectors(source);
+      for (const selector of selectors) {
+        const key = selectorKey(selector);
+        if (!seen.has(key)) {
+          seen.add(key);
+          allSelectors.push(selector);
+        }
+      }
+    }
+  }
+  return allSelectors;
 }
 function formatSelector(selector) {
   return selector.map((segment) => JSON.stringify(segment)).join(" > ");
@@ -76,15 +107,46 @@ function formatInstalledAt(date) {
   const relative = elapsedMinutes < 1 ? "just now" : elapsedMinutes < 60 ? `${Math.floor(elapsedMinutes)}m ago` : elapsedMinutes < 60 * 24 ? `${Math.floor(elapsedMinutes / 60)}h ago` : `${Math.floor(elapsedMinutes / (60 * 24))}d ago`;
   return `${stamp} (${relative})`;
 }
-function getOverrideTarget(manifest, selector) {
-  let value = manifest.overrides;
-  for (const segment of selector) {
-    value = value?.[segment];
+function lookupTargetInObject(obj, selector) {
+  if (obj === null || typeof obj !== "object") {
+    return;
   }
-  return typeof value === "string" ? value : undefined;
+  let current = obj;
+  let found = true;
+  for (const segment of selector) {
+    if (current !== null && typeof current === "object" && segment in current) {
+      current = current[segment];
+    } else {
+      found = false;
+      break;
+    }
+  }
+  if (found && typeof current === "string") {
+    return current;
+  }
+  const joinedKey = selector.join("/");
+  if (typeof obj[joinedKey] === "string") {
+    return obj[joinedKey];
+  }
+  return;
+}
+function getOverrideTarget(manifest, selector) {
+  const sources = [
+    manifest?.overrides,
+    manifest?.pnpm?.overrides,
+    manifest?.resolutions
+  ];
+  for (const source of sources) {
+    const target = lookupTargetInObject(source, selector);
+    if (target !== undefined) {
+      return target;
+    }
+  }
+  return;
 }
 
 // packages/why-override/src/store.js
+import { readFileSync as readFileSync2 } from "node:fs";
 function getRecordSelector(record) {
   if (record === null || typeof record !== "object" || Array.isArray(record)) {
     return;
@@ -184,21 +246,23 @@ function validateReasons({
   reasonDocument,
   selectors,
   manifest,
-  minimumReviewAgeMs = 30 * 24 * 60 * 60 * 1000
+  minimumReviewAgeMs = 30 * 24 * 60 * 60 * 1000,
+  warn = true
 }) {
   const activeSelectorKeys = new Set(selectors.map(selectorKey));
   const reasonsBySelector = new Map;
   const workspacesBySelector = new Map;
+  const warnMsg = (msg) => warn && warnDiagnostic(msg);
   for (const record of reasonDocument.reasons) {
     const selector = getRecordSelector(record);
     const displaySelector = selector ? formatSelector(selector) : "unknown selector";
     if (!isValidReasonRecord(record)) {
-      warnDiagnostic(`malformed override reason record for ${displaySelector}; treating it as undocumented and preserving the record.`);
+      warnMsg(`malformed override reason record for ${displaySelector}; treating it as undocumented and preserving the record.`);
       continue;
     }
     const key = selectorKey(selector);
     if (!activeSelectorKeys.has(key)) {
-      warnDiagnostic(`stale override reason for ${displaySelector}; preserving the record.`);
+      warnMsg(`stale override reason for ${displaySelector}; preserving the record.`);
       continue;
     }
     reasonsBySelector.set(key, record.reason);
@@ -207,16 +271,324 @@ function validateReasons({
     }
     const currentTarget = getOverrideTarget(manifest, selector);
     if (record.target !== undefined && currentTarget !== undefined && record.target !== currentTarget) {
-      warnDiagnostic(`override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`);
+      warnMsg(`override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`);
     }
     if (Date.now() - Date.parse(record.updatedAt) >= minimumReviewAgeMs) {
-      warnDiagnostic(`Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`);
+      warnMsg(`Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`);
     }
   }
   return { reasonsBySelector, workspacesBySelector };
 }
 
+// packages/why-override/src/check.js
+function runCheck(context) {
+  const {
+    selectors,
+    reasonsBySelector,
+    reasonDocument,
+    reasonStoreMissing,
+    reasonStoreWritable,
+    reasonStoreFilename
+  } = context;
+  let hasError = false;
+  if (reasonStoreMissing) {
+    console.error(color.red(`Error: Reason store ${reasonStoreFilename} does not exist.`));
+    hasError = true;
+  } else if (!reasonStoreWritable) {
+    console.error(color.red(`Error: Reason store ${reasonStoreFilename} is malformed.`));
+    hasError = true;
+  }
+  const undocumented = [];
+  for (const selector of selectors) {
+    const key = selectorKey(selector);
+    const reason = reasonsBySelector.get(key);
+    if (typeof reason !== "string" || reason.trim() === "") {
+      undocumented.push(selector);
+    }
+  }
+  if (undocumented.length > 0) {
+    hasError = true;
+    for (const selector of undocumented) {
+      console.error(color.red(`Error: undocumented override ${formatSelector(selector)} (missing reason in ${reasonStoreFilename})`));
+    }
+  }
+  const activeKeys = new Set(selectors.map(selectorKey));
+  const orphaned = [];
+  for (const record of reasonDocument?.reasons ?? []) {
+    const recordSelector = getRecordSelector(record);
+    if (recordSelector && isValidReasonRecord(record)) {
+      const key = selectorKey(recordSelector);
+      if (!activeKeys.has(key)) {
+        orphaned.push(recordSelector);
+      }
+    }
+  }
+  if (orphaned.length > 0) {
+    hasError = true;
+    for (const selector of orphaned) {
+      console.error(color.red(`Error: orphaned override reason for ${formatSelector(selector)} (selector no longer exists in package manifest)`));
+    }
+  }
+  if (hasError) {
+    process.exitCode = 1;
+    return false;
+  }
+  if (selectors.length === 0) {
+    console.log(color.green("✓ No overrides declared; reason store is clean."));
+  } else {
+    console.log(color.green(`✓ All ${selectors.length} override ${selectors.length === 1 ? "reason is" : "reasons are"} documented and up to date.`));
+  }
+  return true;
+}
+
+// packages/why-override/src/doctor-deps.js
+import { existsSync, readdirSync, readFileSync as readFileSync3 } from "node:fs";
+import { resolve as resolve2 } from "node:path";
+function parseSemver(v) {
+  const match = String(v).match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match)
+    return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3])
+  };
+}
+function compareVersions(a, b) {
+  if (a.major !== b.major)
+    return a.major - b.major;
+  if (a.minor !== b.minor)
+    return a.minor - b.minor;
+  return a.patch - b.patch;
+}
+function isSatisfied(requestedSpec, targetVersion) {
+  const targetParsed = parseSemver(targetVersion);
+  if (!targetParsed)
+    return false;
+  const trimmed = String(requestedSpec).trim();
+  if (trimmed === targetVersion || trimmed === `^${targetVersion}` || trimmed === `~${targetVersion}`) {
+    return true;
+  }
+  const gteMatch = trimmed.match(/^>=?\s*(\d+\.\d+\.\d+)/);
+  if (gteMatch) {
+    const minParsed = parseSemver(gteMatch[1]);
+    if (minParsed && compareVersions(targetParsed, minParsed) >= 0) {
+      return true;
+    }
+  }
+  const specMatch = trimmed.match(/^[\^~]?\s*(\d+)\.(\d+)\.(\d+)/);
+  if (specMatch) {
+    const specParsed = {
+      major: Number(specMatch[1]),
+      minor: Number(specMatch[2]),
+      patch: Number(specMatch[3])
+    };
+    if (trimmed.startsWith("^")) {
+      if (specParsed.major > 0 && targetParsed.major === specParsed.major) {
+        return compareVersions(targetParsed, specParsed) >= 0;
+      }
+      return false;
+    }
+    if (trimmed.startsWith("~")) {
+      if (targetParsed.major === specParsed.major && targetParsed.minor === specParsed.minor) {
+        return compareVersions(targetParsed, specParsed) >= 0;
+      }
+      return false;
+    }
+  }
+  return false;
+}
+function findDependentsInLockfile(workspaceRoot, targetPackageName) {
+  const lockfilePath = resolve2(workspaceRoot, "package-lock.json");
+  if (!existsSync(lockfilePath))
+    return null;
+  try {
+    const lockfile = JSON.parse(readFileSync3(lockfilePath, "utf8"));
+    const dependents = [];
+    if (lockfile.packages && typeof lockfile.packages === "object") {
+      for (const [pkgPath, pkgInfo] of Object.entries(lockfile.packages)) {
+        if (!pkgPath || pkgPath === "")
+          continue;
+        const deps = {
+          ...pkgInfo.dependencies,
+          ...pkgInfo.peerDependencies
+        };
+        if (deps[targetPackageName]) {
+          const spec = deps[targetPackageName];
+          const name = pkgInfo.name ?? pkgPath.replace(/^.*node_modules\//, "");
+          dependents.push({ name, path: pkgPath, spec });
+        }
+      }
+      return dependents;
+    }
+    if (lockfile.dependencies) {
+      const scanV1Deps = (depsObj, parentName = "") => {
+        for (const [name, info] of Object.entries(depsObj ?? {})) {
+          if (info.requires?.[targetPackageName]) {
+            dependents.push({
+              name: parentName || name,
+              path: `node_modules/${name}`,
+              spec: info.requires[targetPackageName]
+            });
+          }
+          if (info.dependencies) {
+            scanV1Deps(info.dependencies, name);
+          }
+        }
+      };
+      scanV1Deps(lockfile.dependencies);
+      return dependents;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+function findDependentsInNodeModules(workspaceRoot, targetPackageName) {
+  const nodeModulesDir = resolve2(workspaceRoot, "node_modules");
+  if (!existsSync(nodeModulesDir))
+    return [];
+  const dependents = [];
+  const checkPkg = (pkgDir, pkgName) => {
+    try {
+      const manifestPath = resolve2(pkgDir, "package.json");
+      if (existsSync(manifestPath)) {
+        const pkgManifest = JSON.parse(readFileSync3(manifestPath, "utf8"));
+        const deps = {
+          ...pkgManifest.dependencies,
+          ...pkgManifest.peerDependencies
+        };
+        if (deps[targetPackageName]) {
+          dependents.push({
+            name: pkgName,
+            path: `node_modules/${pkgName}`,
+            spec: deps[targetPackageName]
+          });
+        }
+      }
+    } catch {}
+  };
+  try {
+    const entries = readdirSync(nodeModulesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (entry.name.startsWith("@")) {
+          const scopedDir = resolve2(nodeModulesDir, entry.name);
+          try {
+            const scopedEntries = readdirSync(scopedDir, {
+              withFileTypes: true
+            });
+            for (const scopedEntry of scopedEntries) {
+              if (scopedEntry.isDirectory()) {
+                checkPkg(resolve2(scopedDir, scopedEntry.name), `${entry.name}/${scopedEntry.name}`);
+              }
+            }
+          } catch {}
+        } else if (entry.name !== targetPackageName && !entry.name.startsWith(".")) {
+          checkPkg(resolve2(nodeModulesDir, entry.name), entry.name);
+        }
+      }
+    }
+  } catch {}
+  return dependents;
+}
+
+// packages/why-override/src/doctor.js
+function runDoctor(context) {
+  const {
+    workspaceRoot,
+    manifest,
+    selectors,
+    reasonsBySelector,
+    reasonDocument,
+    reasonStoreFilename,
+    reasonStoreMissing,
+    reasonStoreWritable
+  } = context;
+  console.log(color.bold(`=== why-override Doctor ===
+`));
+  if (reasonStoreMissing) {
+    console.log(`Reason Store: ${color.red("MISSING")} (${reasonStoreFilename})`);
+  } else if (!reasonStoreWritable) {
+    console.log(`Reason Store: ${color.red("MALFORMED")} (${reasonStoreFilename})`);
+  } else {
+    console.log(`Reason Store: ${color.green("HEALTHY")} (${reasonStoreFilename})`);
+  }
+  const activeKeys = new Set(selectors.map(selectorKey));
+  console.log(`Total Overrides: ${selectors.length}`);
+  console.log(`Total Stored Reasons: ${reasonDocument?.reasons?.length ?? 0}`);
+  const orphaned = [];
+  for (const record of reasonDocument?.reasons ?? []) {
+    const recordSelector = getRecordSelector(record);
+    if (recordSelector && isValidReasonRecord(record)) {
+      const key = selectorKey(recordSelector);
+      if (!activeKeys.has(key)) {
+        orphaned.push(recordSelector);
+      }
+    }
+  }
+  if (orphaned.length > 0) {
+    console.log(`
+${color.yellow(`Orphaned Records (${orphaned.length}):`)}`);
+    for (const s of orphaned) {
+      console.log(`  - ${formatSelector(s)} (run 'why-override prune' to remove)`);
+    }
+  }
+  if (selectors.length > 0) {
+    console.log(color.bold(`
+Override Analysis:`));
+  }
+  for (const selector of selectors) {
+    const key = selectorKey(selector);
+    const displaySelector = formatSelector(selector);
+    const reason = reasonsBySelector.get(key);
+    const currentTarget = getOverrideTarget(manifest, selector);
+    const pkgName = packageNameFromSegment(selector.at(-1) ?? "");
+    console.log(`
+${color.bold(displaySelector)}`);
+    if (currentTarget) {
+      console.log(`  Target: ${currentTarget}`);
+    }
+    if (reason) {
+      console.log(`  Reason: ${reason}`);
+    } else {
+      console.log(`  Reason: ${color.red("UNDOCUMENTED")}`);
+    }
+    const lockfileDeps = findDependentsInLockfile(workspaceRoot, pkgName);
+    const dependents = lockfileDeps !== null ? lockfileDeps : findDependentsInNodeModules(workspaceRoot, pkgName);
+    if (dependents.length === 0) {
+      console.log(`  Status: ${color.cyan("Safe to Remove")} (no parent packages found requesting "${pkgName}")`);
+    } else {
+      const unmet = [];
+      for (const dep of dependents) {
+        if (currentTarget && !isSatisfied(dep.spec, currentTarget)) {
+          unmet.push(dep);
+        }
+      }
+      if (unmet.length === 0 && currentTarget) {
+        console.log(`  Status: ${color.green("Safe to Remove")} (all parent packages natively satisfy "${currentTarget}")`);
+        console.log("  Dependents:");
+        for (const dep of dependents) {
+          console.log(`    - ${dep.name} requests "${dep.spec}"`);
+        }
+      } else {
+        console.log(`  Status: ${color.yellow("Still Needed")}`);
+        console.log("  Dependents requiring override:");
+        for (const dep of unmet.length > 0 ? unmet : dependents) {
+          console.log(`    - ${dep.name} requests "${dep.spec}"`);
+        }
+      }
+    }
+  }
+  console.log(`
+===========================`);
+}
+
+// packages/why-override/src/enforce.js
+import { writeFileSync as writeFileSync2 } from "node:fs";
+
 // packages/why-override/src/prompt.js
+import { clearLine, cursorTo, moveCursor } from "node:readline";
 function debounce(fn, waitMs = 300) {
   let timer;
   const debounced = (...args) => {
@@ -724,24 +1096,75 @@ async function runEnforce(context, isReenter) {
   }
 }
 
+// packages/why-override/src/prune.js
+import { writeFileSync as writeFileSync3 } from "node:fs";
+function runPrune(context) {
+  const {
+    selectors,
+    reasonDocument,
+    reasonStorePath,
+    reasonStoreFilename,
+    reasonStoreMissing,
+    reasonStoreWritable
+  } = context;
+  if (reasonStoreMissing) {
+    console.log(`Reason store ${reasonStoreFilename} does not exist; nothing to prune.`);
+    return;
+  }
+  if (!reasonStoreWritable) {
+    console.error(color.red(`Error: Cannot prune because ${reasonStoreFilename} is malformed.`));
+    process.exitCode = 1;
+    return;
+  }
+  const activeKeys = new Set(selectors.map(selectorKey));
+  const remainingReasons = [];
+  const pruned = [];
+  for (const record of reasonDocument?.reasons ?? []) {
+    const recordSelector = getRecordSelector(record);
+    if (recordSelector && isValidReasonRecord(record)) {
+      const key = selectorKey(recordSelector);
+      if (!activeKeys.has(key)) {
+        pruned.push(recordSelector);
+        continue;
+      }
+    }
+    remainingReasons.push(record);
+  }
+  if (pruned.length === 0) {
+    console.log("No orphaned override reasons to prune.");
+    return;
+  }
+  reasonDocument.reasons = remainingReasons;
+  context.reasonText = `${JSON.stringify(reasonDocument, null, 2)}
+`;
+  writeFileSync3(reasonStorePath, context.reasonText);
+  for (const selector of pruned) {
+    console.log(`Pruned orphaned reason for ${formatSelector(selector)}.`);
+  }
+  console.log(`Successfully pruned ${pruned.length} orphaned override ${pruned.length === 1 ? "record" : "records"} from ${reasonStoreFilename}.`);
+}
+
 // packages/why-override/src/workspace.js
-import { existsSync, readFileSync as readFileSync3 } from "node:fs";
-import { dirname, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync2, readFileSync as readFileSync4 } from "node:fs";
+import { dirname, resolve as resolve3 } from "node:path";
 import { fileURLToPath } from "node:url";
 function findWorkspaceRoot() {
-  let currentDir = resolve2(process.cwd());
+  let currentDir = resolve3(process.cwd());
   let nearestManifestDir;
   let workspaceRootDir;
   while (true) {
-    const manifestPath = resolve2(currentDir, "package.json");
-    if (existsSync(manifestPath)) {
+    const manifestPath = resolve3(currentDir, "package.json");
+    if (existsSync2(manifestPath)) {
       nearestManifestDir ??= currentDir;
       try {
-        const parsed = JSON.parse(readFileSync3(manifestPath, "utf8"));
+        const parsed = JSON.parse(readFileSync4(manifestPath, "utf8"));
         if (parsed?.workspaces !== undefined) {
           workspaceRootDir = currentDir;
         }
       } catch {}
+    }
+    if (existsSync2(resolve3(currentDir, "pnpm-workspace.yaml"))) {
+      workspaceRootDir = currentDir;
     }
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir) {
@@ -749,34 +1172,41 @@ function findWorkspaceRoot() {
     }
     currentDir = parentDir;
   }
-  return workspaceRootDir ?? nearestManifestDir ?? resolve2(dirname(fileURLToPath(import.meta.url)), "../../..");
+  return workspaceRootDir ?? nearestManifestDir ?? resolve3(dirname(fileURLToPath(import.meta.url)), "../../..");
 }
 function findReasonStorePath(root) {
-  const dotPath = resolve2(root, ".override-reasons.json");
-  if (existsSync(dotPath)) {
-    return dotPath;
+  const candidates = [
+    resolve3(root, ".override-reasons.json"),
+    resolve3(root, ".override-reasons.jsonc"),
+    resolve3(root, "override-reasons.json"),
+    resolve3(root, "override-reasons.jsonc")
+  ];
+  for (const candidate of candidates) {
+    if (existsSync2(candidate)) {
+      return candidate;
+    }
   }
-  const regularPath = resolve2(root, "override-reasons.json");
-  if (existsSync(regularPath)) {
-    return regularPath;
-  }
-  return dotPath;
+  return candidates[0];
 }
 
 // packages/why-override/src/cli.js
 var workspaceRoot = findWorkspaceRoot();
-var manifest = JSON.parse(readFileSync4(resolve3(workspaceRoot, "package.json"), "utf8"));
+var manifest = JSON.parse(readFileSync5(resolve4(workspaceRoot, "package.json"), "utf8"));
 var reasonStorePath = findReasonStorePath(workspaceRoot);
 var reasonStoreFilename = basename(reasonStorePath);
 var storeData = loadReasonStore(reasonStorePath, reasonStoreFilename);
 var { reasonDocument, reasonStoreMissing, reasonStoreWritable } = storeData;
 var promptTimeoutSeconds = getPromptTimeoutSeconds(manifest);
 var promptInterface = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
-var selectors = collectOverrideSelectors(manifest.overrides);
+var selectors = collectAllManifestSelectors(manifest);
+var isCheck = process.argv[2] === "check" || process.argv.includes("--check") || process.argv.includes("--ci");
+var isPrune = process.argv[2] === "prune" || process.argv[2] === "clean" || process.argv.includes("--prune") || process.argv.includes("--clean");
+var isDoctor = process.argv[2] === "doctor" || process.argv.includes("--doctor");
 var { reasonsBySelector, workspacesBySelector } = validateReasons({
   reasonDocument,
   selectors,
-  manifest
+  manifest,
+  warn: !isCheck && !isPrune && !isDoctor
 });
 var context = {
   workspaceRoot,
@@ -793,8 +1223,29 @@ var context = {
   reasonsBySelector,
   workspacesBySelector
 };
+function printHelp() {
+  console.log(`why-override - Document and review package dependency overrides
+
+Usage:
+  why-override                     Enforce override reasons and prompt in interactive TTY
+  why-override check, --check, --ci Verify all overrides are documented (exits 1 on failure)
+  why-override prune, clean        Remove orphaned records from reason store
+  why-override doctor              Analyze override health and upstream dependencies
+  why-override refresh             Interactively update reasons
+  why-override refresh --all       Prompt to re-enter reasons for all overrides
+  why-override refresh '<selector>' Update reason for a specific selector
+`);
+}
 try {
-  if (process.argv[2] === "refresh") {
+  if (process.argv.includes("--help") || process.argv.includes("-h")) {
+    printHelp();
+  } else if (isCheck) {
+    runCheck(context);
+  } else if (isPrune) {
+    runPrune(context);
+  } else if (isDoctor) {
+    runDoctor(context);
+  } else if (process.argv[2] === "refresh") {
     if (process.argv[3] === "--all" || process.argv[3] === "-a") {
       for (const selector of selectors) {
         await refreshReason(context, selector);
@@ -835,7 +1286,7 @@ try {
             }
           }
           if (anyChanged) {
-            writeFileSync3(reasonStorePath, context.reasonText);
+            writeFileSync4(reasonStorePath, context.reasonText);
           }
         }
         console.log(color.dim(`Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`));

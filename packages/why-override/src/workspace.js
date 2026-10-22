@@ -21,6 +21,10 @@ export function findWorkspaceRoot() {
       }
     }
 
+    if (existsSync(resolve(currentDir, "pnpm-workspace.yaml"))) {
+      workspaceRootDir = currentDir;
+    }
+
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir) {
       break;
@@ -36,13 +40,16 @@ export function findWorkspaceRoot() {
 }
 
 export function findReasonStorePath(root) {
-  const dotPath = resolve(root, ".override-reasons.json");
-  if (existsSync(dotPath)) {
-    return dotPath;
+  const candidates = [
+    resolve(root, ".override-reasons.json"),
+    resolve(root, ".override-reasons.jsonc"),
+    resolve(root, "override-reasons.json"),
+    resolve(root, "override-reasons.jsonc"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
   }
-  const regularPath = resolve(root, "override-reasons.json");
-  if (existsSync(regularPath)) {
-    return regularPath;
-  }
-  return dotPath;
+  return candidates[0];
 }

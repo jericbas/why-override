@@ -126,7 +126,12 @@ A reminder note is also displayed directing you to `.override-reasons.json` if y
 
 ### Running with package managers
 
-You can invoke `why-override` directly using any major package manager:
+`why-override` supports overrides and resolutions across all major package managers:
+- **npm** and **Bun**: root `"overrides"`
+- **pnpm**: `"pnpm.overrides"` and root `"overrides"`
+- **Yarn** and **Bun**: `"resolutions"` (including flat `"parent/child"` paths and scoped packages)
+
+You can invoke `why-override` directly using any package manager:
 
 ```sh
 # npm
@@ -182,6 +187,47 @@ npx why-override refresh '[["packageA"], ["packageB"]]'
 ```
 
 A changed explanation preserves `createdAt` and updates `updatedAt`; submitting the same explanation leaves timestamps unchanged.
+
+### CI / Pull Request Gates (Strict Check)
+
+In non-TTY environments (such as CI runners), installs do not block on undocumented overrides. To strictly enforce in CI that no pull request is merged with missing or orphaned override reasons, use strict check mode:
+
+```sh
+npx why-override --check
+# or:
+npx why-override --ci
+# or:
+npx why-override check
+```
+
+The command exits with code `1` if:
+1. Any declared override in `package.json` (or `pnpm.overrides` / `resolutions`) is missing a reason in `.override-reasons.json`.
+2. Any record in `.override-reasons.json` is orphaned (the override was removed from `package.json`).
+3. The reason store is missing or malformed.
+
+### Pruning Orphaned Records
+
+When overrides are removed from your project, their corresponding entries in `.override-reasons.json` become orphaned. To automatically clean them up:
+
+```sh
+npx why-override prune
+# or:
+npx why-override clean
+```
+
+This strips orphaned selectors from `.override-reasons.json` while preserving all active records and clean JSON formatting.
+
+### Upstream Resolution Detection (`doctor`)
+
+To check whether declared overrides are still needed by your dependency graph or whether upstream parent packages have already updated to compatible versions:
+
+```sh
+npx why-override doctor
+```
+
+The `doctor` command inspects your package lockfile or `node_modules` to determine what versions upstream parent packages natively request:
+- **Safe to Remove**: All parent packages natively request versions satisfied by the target (or no parent packages depend on the overridden package anymore).
+- **Still Needed**: One or more parent packages still require older versions.
 
 ## Configuration and warnings
 

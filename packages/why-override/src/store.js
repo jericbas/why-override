@@ -155,10 +155,12 @@ export function validateReasons({
   selectors,
   manifest,
   minimumReviewAgeMs = 30 * 24 * 60 * 60 * 1000,
+  warn = true,
 }) {
   const activeSelectorKeys = new Set(selectors.map(selectorKey));
   const reasonsBySelector = new Map();
   const workspacesBySelector = new Map();
+  const warnMsg = (msg) => warn && warnDiagnostic(msg);
 
   for (const record of reasonDocument.reasons) {
     const selector = getRecordSelector(record);
@@ -166,7 +168,7 @@ export function validateReasons({
       ? formatSelector(selector)
       : "unknown selector";
     if (!isValidReasonRecord(record)) {
-      warnDiagnostic(
+      warnMsg(
         `malformed override reason record for ${displaySelector}; treating it as undocumented and preserving the record.`,
       );
       continue;
@@ -174,7 +176,7 @@ export function validateReasons({
 
     const key = selectorKey(selector);
     if (!activeSelectorKeys.has(key)) {
-      warnDiagnostic(
+      warnMsg(
         `stale override reason for ${displaySelector}; preserving the record.`,
       );
       continue;
@@ -194,13 +196,13 @@ export function validateReasons({
       currentTarget !== undefined &&
       record.target !== currentTarget
     ) {
-      warnDiagnostic(
+      warnMsg(
         `override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`,
       );
     }
 
     if (Date.now() - Date.parse(record.updatedAt) >= minimumReviewAgeMs) {
-      warnDiagnostic(
+      warnMsg(
         `Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`,
       );
     }

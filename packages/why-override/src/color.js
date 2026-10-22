@@ -7,6 +7,7 @@ export const ansi = (code) => (text) =>
 export const color = {
   bold: ansi("1"),
   dim: ansi("2"),
+  red: ansi("31"),
   cyan: ansi("36;1"),
   green: ansi("32"),
   yellow: ansi("33"),

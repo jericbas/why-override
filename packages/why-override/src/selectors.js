@@ -1,12 +1,30 @@
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
+export function parseSelectorSegments(key) {
+  if (!key.includes("/")) {
+    return [key];
+  }
+  const parts = key.split("/");
+  const segments = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].startsWith("@") && i + 1 < parts.length) {
+      segments.push(`${parts[i]}/${parts[i + 1]}`);
+      i++;
+    } else {
+      segments.push(parts[i]);
+    }
+  }
+  return segments;
+}
+
 export function collectOverrideSelectors(overrides, parentPath = []) {
   const selectors = [];
 
   for (const [key, value] of Object.entries(overrides ?? {})) {
-    const selector = [...parentPath, key];
-    if (key.includes("*")) {
+    const segments = parseSelectorSegments(key);
+    const selector = [...parentPath, ...segments];
+    if (selector.some((segment) => segment.includes("*"))) {
       console.warn(
         `Warning: unsupported wildcard override selector ${JSON.stringify(selector)}; skipping.`,
       );
@@ -25,6 +43,31 @@ export function collectOverrideSelectors(overrides, parentPath = []) {
 
 export function selectorKey(selector) {
   return JSON.stringify(selector);
+}
+
+export function collectAllManifestSelectors(manifest) {
+  const sources = [
+    manifest?.overrides,
+    manifest?.pnpm?.overrides,
+    manifest?.resolutions,
+  ];
+  const seen = new Set();
+  const allSelectors = [];
+
+  for (const source of sources) {
+    if (source && typeof source === "object" && !Array.isArray(source)) {
+      const selectors = collectOverrideSelectors(source);
+      for (const selector of selectors) {
+        const key = selectorKey(selector);
+        if (!seen.has(key)) {
+          seen.add(key);
+          allSelectors.push(selector);
+        }
+      }
+    }
+  }
+
+  return allSelectors;
 }
 
 export function formatSelector(selector) {
@@ -65,10 +108,41 @@ export function formatInstalledAt(date) {
   return `${stamp} (${relative})`;
 }
 
-export function getOverrideTarget(manifest, selector) {
-  let value = manifest.overrides;
-  for (const segment of selector) {
-    value = value?.[segment];
+function lookupTargetInObject(obj, selector) {
+  if (obj === null || typeof obj !== "object") {
+    return undefined;
   }
-  return typeof value === "string" ? value : undefined;
+  let current = obj;
+  let found = true;
+  for (const segment of selector) {
+    if (current !== null && typeof current === "object" && segment in current) {
+      current = current[segment];
+    } else {
+      found = false;
+      break;
+    }
+  }
+  if (found && typeof current === "string") {
+    return current;
+  }
+  const joinedKey = selector.join("/");
+  if (typeof obj[joinedKey] === "string") {
+    return obj[joinedKey];
+  }
+  return undefined;
+}
+
+export function getOverrideTarget(manifest, selector) {
+  const sources = [
+    manifest?.overrides,
+    manifest?.pnpm?.overrides,
+    manifest?.resolutions,
+  ];
+  for (const source of sources) {
+    const target = lookupTargetInObject(source, selector);
+    if (target !== undefined) {
+      return target;
+    }
+  }
+  return undefined;
 }
