@@ -511,18 +511,13 @@ async function askForExplanation(displaySelector) {
       ),
     );
   }
-  console.log(
-    color.dim(
-      `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
-    ),
-  );
 
   let timeoutHandle;
   let countdownHandle;
   const timeoutToken = Symbol("prompt-timeout");
   const closeToken = Symbol("prompt-close");
   const formatQuestion = (secondsLeft) =>
-    `Why do you need to override this? ${displaySelector} (auto-skips in ${secondsLeft}s)`;
+    `${color.cyan("Why do you need to override this?")} ${color.yellow(color.bold(displaySelector))} ${color.dim(`(auto-skips in ${secondsLeft}s)`)}`;
   let deadline = Date.now() + promptTimeoutSeconds * 1000;
 
   const renderQuestion = (secondsLeft) => {
@@ -699,6 +694,13 @@ try {
       for (const selector of selectors) {
         await refreshReason(selector);
       }
+      if (selectors.length > 0) {
+        console.log(
+          color.dim(
+            `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
+          ),
+        );
+      }
     } else {
       let selector;
       try {
@@ -721,6 +723,11 @@ try {
         process.exitCode = 1;
       } else {
         await refreshReason(selector);
+        console.log(
+          color.dim(
+            `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
+          ),
+        );
       }
     }
   } else {
@@ -741,14 +748,6 @@ try {
           ({ reason }) => typeof reason === "string" && reason.trim() !== "",
         ),
     );
-
-    if (selectors.length > 0) {
-      console.log(
-        color.dim(
-          `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
-        ),
-      );
-    }
 
     for (const selector of selectors) {
       const key = selectorKey(selector);
@@ -802,6 +801,14 @@ try {
       }
       reasonDocument.reasons.push(record);
       reasonsBySelector.set(key, explanation);
+    }
+
+    if (selectors.length > 0) {
+      console.log(
+        color.dim(
+          `Note: please check ${reasonStoreFilename} if you want to check and edit reasons manually.`,
+        ),
+      );
     }
   }
 } finally {
