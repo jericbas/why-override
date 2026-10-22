@@ -99,16 +99,15 @@ This checks that the tarball includes the package README, license, manifest, and
 
 Automated releases and npm publishing are handled by [Google's Release Please](https://github.com/googleapis/release-please-action) via GitHub Actions.
 
-### Branching workflow
+### Branching workflow (Trunk-based)
 
-1. **Feature branches:** Branch off `develop` using standard naming (`feat/*`, `fix/*`, `docs/*`, `chore/*`).
+1. **Feature branches:** Branch off `main` using standard naming (`feat/*`, `fix/*`, `docs/*`, `chore/*`).
 2. **Conventional Commits:** All PRs and commits must follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g., `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`). Release Please uses these prefixes to determine semver bumps (`feat` for minor, `fix` for patch, `!` or `BREAKING CHANGE` for major) and generate changelog entries.
-3. **Merge to `develop`:** Pull requests are reviewed and merged into `develop`.
-4. **Promote to `main`:** When ready to cut a release, open a PR from `develop` into `main`. Ensure commit history or PR titles maintain conventional commit formatting.
-5. **Merge Release PR:**
-   - Pushing to `main` triggers `.github/workflows/release-please.yml`, which creates or updates a release PR.
-   - Merging this release PR generates the GitHub tag, release notes, and triggers automated publishing to npm.
-6. **Sync `develop`:** Merge `main` back into `develop` to sync version bumps and changelog updates.
+3. **Merge to `main`:** Pull requests are reviewed and merged directly into `main`.
+4. **Automated Release PR:**
+   - Pushing/merging to `main` triggers `.github/workflows/release-please.yml`, which automatically creates or updates a candidate Release PR (e.g. `chore(main): release X.Y.Z`).
+5. **Publish to npm:**
+   - When ready to release, merge the Release PR into `main`. Release Please creates the GitHub Release, tags the commit, and automatically publishes to npm (with automatic retries).
 
 ### Manual / emergency publish
 
