@@ -4,6 +4,7 @@
 [![downloads](https://img.shields.io/npm/dt/why-override)](https://www.npmjs.com/package/why-override)
 [![size](https://img.shields.io/bundlephobia/minzip/why-override)](https://bundlephobia.com/package/why-override)
 [![vulns](https://security.snyk.io/badges/npm:why-override.svg)](https://security.snyk.io/package/npm/why-override)
+[![Socket Badge](https://badge.socket.dev/npm/package/why-override/1.1.0)](https://badge.socket.dev/npm/package/why-override/1.1.0)
 
 [![deps](https://nodei.co/npm/why-override.png)](https://www.npmjs.com/package/why-override)
 
