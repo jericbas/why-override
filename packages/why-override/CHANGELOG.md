@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.0](https://github.com/jericbas/why-override/compare/v1.0.0...v1.1.0) (2026-10-22)
+
+
+### Features
+
+* **cli:** add interactive refresh package selection and enforce 200-line limit ([9838755](https://github.com/jericbas/why-override/commit/9838755840d7b48ec152a1091e7b99b9fb08e878))
+* **cli:** add interactive refresh selection and enforce max lines rule ([e4ccdcd](https://github.com/jericbas/why-override/commit/e4ccdcda6b4154cc771ffccfb5b11f2feec59e82))
+* **cli:** highlight selector with color and display manual edit note after editing ([49cefe3](https://github.com/jericbas/why-override/commit/49cefe3351fcf5bc5fc3f61a4a386606f17236e2))
+* **cli:** reset prompt timer on input with debounce and allow selecting existing reasons ([aa4b50f](https://github.com/jericbas/why-override/commit/aa4b50fc86fbc26f6a9bbc86db4ebff89fdc8c1c))
+* **cli:** reset prompt timer on input with debounce and allow selecting existing reasons ([5b80013](https://github.com/jericbas/why-override/commit/5b800135017589aa4a4422341751574fc494ffbc))
+
 ## 1.0.0 (2026-10-21)
 
 
