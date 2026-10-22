@@ -45,7 +45,19 @@ jobs:
       - run: bun run build
         if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
 
-      - run: npm publish --workspace=packages/why-override --access public
+      - name: Publish to npm with retry
         if: ${{ steps.release.outputs['packages/why-override--release_created'] || inputs.force_publish }}
+        run: |
+          for i in 1 2 3; do
+            echo "Attempt $i to publish to npm..."
+            if npm publish --workspace=packages/why-override --access public; then
+              echo "Published successfully on attempt $i"
+              exit 0
+            fi
+            echo "Publish attempt $i failed. Waiting 15 seconds before retrying..."
+            sleep 15
+          done
+          echo "Failed to publish after 3 attempts."
+          exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
