@@ -1,0 +1,21 @@
+[package]
+name = "why-override"
+version = "1.3.0"
+edition = "2021"
+description = "Document and review npm dependency overrides."
+license = "MIT"
+
+[[bin]]
+name = "why-override"
+path = "rust/main.rs"
+
+[lib]
+name = "why_override"
+path = "rust/lib.rs"
+doctest = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

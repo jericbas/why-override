@@ -88,6 +88,21 @@ export function printBenchTable(title: string, results: BenchResult[]) {
   console.log([sep, fmt(headers), sep, ...rows.map(fmt), sep].join("\n"));
 }
 
+export async function runRustEnforcer(root: string, args: string[] = []) {
+  const bin = join(repositoryRoot, "packages/why-override/dist/why-override");
+  const child = Bun.spawn([bin, ...args], {
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [out, err, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { output: `${out}\n${err}`, exitCode };
+}
+
 export function generateSyntheticManifestAndReasons(overrideCount: number) {
   const overrides: Record<string, unknown> = {};
   const reasons: Array<Record<string, unknown>> = [];
@@ -97,27 +112,18 @@ export function generateSyntheticManifestAndReasons(overrideCount: number) {
     const pkg =
       i % 5 === 0 ? `@scope-${i % 10}/pkg-${i}` : `synthetic-pkg-${i}`;
     const target = `${(i % 4) + 1}.${i % 10}.${i % 20}`;
-    if (i % 3 === 0) {
-      const parent = `parent-pkg-${i}`;
-      overrides[parent] = { [pkg]: target };
-      reasons.push({
-        selector: [parent, pkg],
-        reason: `Keep transitive dependency ${pkg} inside ${parent} on a patched release (${i}).`,
-        target,
-        workspaces: i % 2 === 0 ? ["@why-override/demo"] : undefined,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-      });
-    } else {
-      overrides[pkg] = target;
-      reasons.push({
-        selector: [pkg],
-        reason: `Pin ${pkg} to ${target} to resolve upstream compatibility regression #${1000 + i}.`,
-        target,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-      });
-    }
+    const isNested = i % 3 === 0;
+    const parent = `parent-pkg-${i}`;
+    if (isNested) overrides[parent] = { [pkg]: target };
+    else overrides[pkg] = target;
+    reasons.push({
+      selector: isNested ? [parent, pkg] : [pkg],
+      reason: `Pin ${pkg} to ${target} for upstream compatibility (#${1000 + i}).`,
+      target,
+      workspaces: isNested && i % 2 === 0 ? ["@why-override/demo"] : undefined,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
   }
   return {
     manifest: { name: "synthetic-perf-fixture", version: "1.0.0", overrides },
@@ -176,30 +182,24 @@ export async function createPerfFixture({
     writeFile(join(fixtureRoot, "packages/why-override/dist/cli.js"), cliCode),
   ];
   if (lockfilePackageCount > 0) {
-    writes.push(
-      writeFile(
-        join(fixtureRoot, "package-lock.json"),
-        JSON.stringify(
-          generateSyntheticLockfile(overrideCount, lockfilePackageCount),
-        ),
-      ),
+    const lockJson = JSON.stringify(
+      generateSyntheticLockfile(overrideCount, lockfilePackageCount),
     );
+    writes.push(writeFile(join(fixtureRoot, "package-lock.json"), lockJson));
   }
   for (let i = 0; i < nodeModulesCount; i++) {
     const idx = i % Math.max(1, overrideCount);
     const targetPkg =
       idx % 5 === 0 ? `@scope-${idx % 10}/pkg-${idx}` : `synthetic-pkg-${idx}`;
     const pkgDir = join(fixtureRoot, "node_modules", `nm-pkg-${i}`);
+    const nmJson = JSON.stringify({
+      name: `nm-pkg-${i}`,
+      version: "1.0.0",
+      dependencies: { [targetPkg]: "^1.0.0" },
+    });
     writes.push(
       mkdir(pkgDir, { recursive: true }).then(() =>
-        writeFile(
-          join(pkgDir, "package.json"),
-          JSON.stringify({
-            name: `nm-pkg-${i}`,
-            version: "1.0.0",
-            dependencies: { [targetPkg]: "^1.0.0" },
-          }),
-        ),
+        writeFile(join(pkgDir, "package.json"), nmJson),
       ),
     );
   }

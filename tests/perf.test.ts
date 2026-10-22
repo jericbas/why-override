@@ -14,6 +14,7 @@ import { runEnforcer } from "./helpers.ts";
 import {
   createPerfFixture,
   generateSyntheticManifestAndReasons,
+  runRustEnforcer,
 } from "./perf-fixtures.ts";
 
 function withSilentConsole<T>(fn: () => T): T {
@@ -196,6 +197,22 @@ test("perf: end-to-end CLI commands (check, enforce, doctor) complete well withi
     expect(doctorRes.exitCode).toBe(0);
     expect(doctorRes.output).toContain("Total Overrides: 200");
     expect(doctorElapsed).toBeLessThan(500);
+
+    const startRustCheck = performance.now();
+    const rustCheckRes = await runRustEnforcer(fixtureRoot, ["check"]);
+    const rustCheckElapsed = performance.now() - startRustCheck;
+    expect(rustCheckRes.exitCode).toBe(0);
+    expect(rustCheckRes.output).toContain(
+      "All 200 override reasons are documented",
+    );
+    expect(rustCheckElapsed).toBeLessThan(100);
+
+    const startRustDoctor = performance.now();
+    const rustDoctorRes = await runRustEnforcer(fixtureRoot, ["doctor"]);
+    const rustDoctorElapsed = performance.now() - startRustDoctor;
+    expect(rustDoctorRes.exitCode).toBe(0);
+    expect(rustDoctorRes.output).toContain("Total Overrides: 200");
+    expect(rustDoctorElapsed).toBeLessThan(150);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }

@@ -15,6 +15,7 @@ import {
   generateSyntheticManifestAndReasons,
   printBenchTable,
   runBenchmark,
+  runRustEnforcer,
   withSilentConsole,
 } from "./perf-fixtures.ts";
 
@@ -74,6 +75,7 @@ async function main() {
     const mediumCtx = buildDoctorContext(mediumFixture);
     const largeCtx = buildDoctorContext(largeFixture);
     const nmCtx = buildDoctorContext(nmFixture);
+    const root = largeFixture.fixtureRoot;
 
     const inProcessResults: BenchResult[] = [
       await runBenchmark(
@@ -127,11 +129,7 @@ async function main() {
         "printOverrideTable (200 overrides)",
         () => {
           withSilentConsole(() =>
-            printOverrideTable(
-              tableEntries,
-              largeFixture.fixtureRoot,
-              largeData.manifest,
-            ),
+            printOverrideTable(tableEntries, root, largeData.manifest),
           );
         },
         100,
@@ -161,37 +159,32 @@ async function main() {
         2,
       ),
     ];
+    printBenchTable("In-Process Module Benchmarks (JS)", inProcessResults);
 
-    printBenchTable("In-Process Module Benchmarks", inProcessResults);
-
-    const e2eResults: BenchResult[] = [
-      await runBenchmark(
-        "CLI e2e: why-override check (200 overrides)",
-        async () => {
-          await runEnforcer(largeFixture.fixtureRoot, ["check"]);
-        },
-        10,
-        2,
-      ),
-      await runBenchmark(
-        "CLI e2e: why-override enforce (200 overrides)",
-        async () => {
-          await runEnforcer(largeFixture.fixtureRoot, []);
-        },
-        10,
-        2,
-      ),
-      await runBenchmark(
-        "CLI e2e: why-override doctor (200 overrides, 5k lockfile)",
-        async () => {
-          await runEnforcer(largeFixture.fixtureRoot, ["doctor"]);
-        },
-        10,
-        2,
-      ),
+    const e2eCommands: Array<[string, string[]]> = [
+      ["CLI e2e: why-override check (200 overrides)", ["check"]],
+      ["CLI e2e: why-override enforce (200 overrides)", []],
+      ["CLI e2e: why-override doctor (200 overrides, 5k lockfile)", ["doctor"]],
     ];
 
-    printBenchTable("End-to-End CLI Process Benchmarks (Node.js)", e2eResults);
+    const nodeResults: BenchResult[] = [];
+    for (const [label, args] of e2eCommands) {
+      nodeResults.push(
+        await runBenchmark(label, () => runEnforcer(root, args), 10, 2),
+      );
+    }
+    printBenchTable("End-to-End CLI Process Benchmarks (Node.js)", nodeResults);
+
+    const rustResults: BenchResult[] = [];
+    for (const [label, args] of e2eCommands) {
+      rustResults.push(
+        await runBenchmark(label, () => runRustEnforcer(root, args), 20, 3),
+      );
+    }
+    printBenchTable(
+      "End-to-End CLI Process Benchmarks (Native Rust)",
+      rustResults,
+    );
   } finally {
     await Promise.all([
       rm(mediumFixture.fixtureRoot, { recursive: true, force: true }),

@@ -152,3 +152,7 @@ vite.config.ts.timestamp-*
 
 # Bun is the package manager for this repo; don't track an npm lockfile
 /package-lock.json
+
+# Rust build artifacts
+target/
+packages/why-override/dist/why-override
