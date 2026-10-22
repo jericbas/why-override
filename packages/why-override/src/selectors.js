@@ -72,4 +72,3 @@ export function getOverrideTarget(manifest, selector) {
   }
   return typeof value === "string" ? value : undefined;
 }
-

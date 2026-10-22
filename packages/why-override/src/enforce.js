@@ -1,5 +1,4 @@
 import { writeFileSync } from "node:fs";
-import { applyEdits, modify } from "jsonc-parser/lib/esm/main.js";
 import { color, warnDiagnostic } from "./color.js";
 import { askForExplanation } from "./prompt.js";
 import { refreshReason } from "./refresh.js";
@@ -80,19 +79,13 @@ export async function runEnforce(context, isReenter) {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    const edits = modify(
-      context.reasonText,
-      ["reasons", reasonDocument.reasons.length],
-      record,
-      { formattingOptions: { insertSpaces: true, tabSize: 2 } },
-    );
-    context.reasonText = applyEdits(context.reasonText, edits);
+    reasonDocument.reasons.push(record);
+    context.reasonText = `${JSON.stringify(reasonDocument, null, 2)}\n`;
     writeFileSync(reasonStorePath, context.reasonText);
     if (context.reasonStoreMissing) {
       console.log(`Created ${reasonStorePath}.`);
       context.reasonStoreMissing = false;
     }
-    reasonDocument.reasons.push(record);
     reasonsBySelector.set(key, explanation);
   }
 

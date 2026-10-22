@@ -18,7 +18,7 @@ test("refresh updates changed reason but preserves creation time", async () => {
       "--no-fund",
     ]);
     expect(installResult.exitCode).toBe(0);
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const createdAt = "2020-01-01T00:00:00.000Z";
     const originalUpdatedAt = "2021-01-01T00:00:00.000Z";
     await writeFile(
@@ -82,7 +82,7 @@ test("refresh updates changed reason but preserves creation time", async () => {
 test("refresh with an unchanged reason records the current target", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.1" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const createdAt = "2020-01-01T00:00:00.000Z";
     const originalUpdatedAt = "2021-01-01T00:00:00.000Z";
     await writeFile(
@@ -130,7 +130,7 @@ test("refresh with an unchanged reason records the current target", async () => 
 test("refresh --all prompts to re-enter reasons for each override", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     await writeFile(
       reasonStorePath,
       JSON.stringify(
@@ -170,7 +170,7 @@ test("refresh --all prompts to re-enter reasons for each override", async () => 
 test("--reenter flag prompts to re-enter reasons for existing overrides", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     await writeFile(
       reasonStorePath,
       JSON.stringify(

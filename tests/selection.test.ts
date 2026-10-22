@@ -14,7 +14,7 @@ test("interactive refresh prompts to select packages and applies one reason to m
     "is-odd": { "is-number": "7.0.0" },
   });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const reasons = [
       {
         selector: ["chalk"],
@@ -73,7 +73,7 @@ test("interactive refresh allows selecting a single package", async () => {
     "is-odd": { "is-number": "7.0.0" },
   });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const reasons = [
       {
         selector: ["chalk"],
@@ -116,7 +116,7 @@ test("interactive refresh allows selecting a single package", async () => {
 test("interactive refresh cancels cleanly when selection is empty", async () => {
   const fixtureRoot = await createFixture({ chalk: "1.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const reasons = [
       {
         selector: ["chalk"],
@@ -171,7 +171,7 @@ test("refresh accepts array of selectors from command line to apply one reason t
     "is-odd": { "is-number": "7.0.0" },
   });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const reasons = [
       {
         selector: ["chalk"],

@@ -1,14 +1,12 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 export * from "./interactive-helpers.ts";
 
 export const repositoryRoot = resolve(import.meta.dir, "..");
-export const parseJSONC = createRequire(
-  join(repositoryRoot, "packages/why-override/package.json"),
-)("jsonc-parser").parse;
+export const parseJSON = (text: string) => JSON.parse(text);
+export const parseJSONC = parseJSON;
 export const documentedReason =
   "Keep is-odd's transitive is-number dependency on a known stable, compatible release.";
 
@@ -60,8 +58,8 @@ export async function createFixture(
         await readFile(join(repositoryRoot, "apps/demo/src/index.js"), "utf8"),
       ],
       [
-        ".override-reasons.jsonc",
-        await readFile(join(repositoryRoot, ".override-reasons.jsonc"), "utf8"),
+        ".override-reasons.json",
+        await readFile(join(repositoryRoot, ".override-reasons.json"), "utf8"),
       ],
       [
         "packages/why-override/dist/cli.js",
@@ -114,4 +112,3 @@ export async function runEnforcer(fixtureRoot: string) {
   ]);
   return { output: `${stdout}\n${stderr}`, exitCode };
 }
-

@@ -11,7 +11,7 @@ import {
 test("aging documented reasons does not trigger an install prompt", async () => {
   const fixtureRoot = await createFixture({ "is-number": "7.0.0" });
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const oldReasonStore = JSON.stringify(
       {
         version: 1,
@@ -67,7 +67,7 @@ test("reasons warn at 30 days but not before the boundary", async () => {
       },
     ];
     await writeFile(
-      join(fixtureRoot, ".override-reasons.jsonc"),
+      join(fixtureRoot, ".override-reasons.json"),
       JSON.stringify({ version: 1, reasons }, null, 2),
     );
 
@@ -98,7 +98,7 @@ test("stale reason records warn and remain unchanged without blocking installs",
         expect(lockResult.exitCode).toBe(0);
       }
 
-      const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+      const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
       const staleReasonStore = JSON.stringify(
         {
           version: 1,

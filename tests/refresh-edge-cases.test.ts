@@ -12,7 +12,7 @@ import {
 test("refresh updates the valid record when an earlier malformed record shares the selector", async () => {
   const fixtureRoot = await createFixture();
   try {
-    const reasonStorePath = join(fixtureRoot, ".override-reasons.jsonc");
+    const reasonStorePath = join(fixtureRoot, ".override-reasons.json");
     const malformedSameSelector = {
       selector: ["is-number"],
       reason: "Malformed timestamp record.",

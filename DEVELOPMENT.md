@@ -15,7 +15,7 @@ This document describes how to work on the `why-override` repository. Consumer i
 - `packages/why-override/package.json`: npm package metadata, executable mapping, and package contents.
 - `apps/demo/`: workspace consumer demonstrating the root override and locally installed CLI.
 - `tests/lifecycle.test.ts`: subprocess integration tests, including real npm installs and pseudo-terminal prompt scenarios.
-- `.override-reasons.jsonc`: repository demo's tracked reason store (legacy `override-reasons.jsonc` is also supported as fallback).
+- `.override-reasons.json`: repository demo's tracked reason store (legacy `override-reasons.json` is also supported as fallback).
 - `bun.lock`: Bun workspace lockfile.
 
 ## Setup
@@ -27,7 +27,7 @@ bun install
 git config core.hooksPath .githooks
 ```
 
-The root `preinstall` script runs the enforcer. It reads the root `package.json` and `.override-reasons.jsonc`. Configuring `core.hooksPath` enables the commit message hook (`.githooks/commit-msg`), ensuring commits adhere to Conventional Commits (`feat:`, `fix:`, `chore:`, etc.) for Release Please.
+The root `preinstall` script runs the enforcer. It reads the root `package.json` and `.override-reasons.json`. Configuring `core.hooksPath` enables the commit message hook (`.githooks/commit-msg`), ensuring commits adhere to Conventional Commits (`feat:`, `fix:`, `chore:`, etc.) for Release Please.
 
 ## Common commands
 
@@ -86,7 +86,7 @@ This checks that the tarball includes the package README, license, manifest, and
 ## Design constraints
 
 - The consumer's root `package.json` is the authoritative override source. Do not treat workspace member overrides as independently effective.
-- `.override-reasons.jsonc` stores selector paths, explanations, and timestamps, not override targets.
+- `.override-reasons.json` stores selector paths, explanations, and timestamps, not override targets.
 - Selector identity is an array of literal path segments. Do not add npm dependency-tree or semver resolution to the CLI.
 - Aging, malformed data, and stale records warn without blocking installation or automatically rewriting developer-authored data.
 - The CLI does not modify a consumer's package manifest to install a hook. Consumers explicitly configure their root `preinstall` script; see the package README.
