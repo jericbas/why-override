@@ -9,10 +9,29 @@
     "url": "https://github.com/jericbas/why-override.git",
     "directory": "packages/why-override"
   },
+  "homepage": "https://github.com/jericbas/why-override#readme",
+  "bugs": {
+    "url": "https://github.com/jericbas/why-override/issues"
+  },
+  "keywords": [
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "overrides",
+    "resolutions",
+    "dependencies",
+    "governance",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "bin": {
     "why-override": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ]
 }
