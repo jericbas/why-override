@@ -5,6 +5,17 @@
     "indentWidth": 2
   },
   "linter": {
-    "enabled": true
+    "enabled": true,
+    "rules": {
+      "style": {
+        "noExcessiveLinesPerFile": {
+          "level": "error",
+          "options": {
+            "maxLines": 200,
+            "skipBlankLines": true
+          }
+        }
+      }
+    }
   }
 }
