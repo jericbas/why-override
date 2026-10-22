@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { warnDiagnostic } from "./color.js";
 import { formatSelector, getOverrideTarget, selectorKey } from "./selectors.js";
 
+const UTC_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 export function getRecordSelector(record) {
   if (record === null || typeof record !== "object" || Array.isArray(record)) {
     return undefined;
@@ -12,64 +14,68 @@ export function getRecordSelector(record) {
   if (
     Array.isArray(record.selector) &&
     record.selector.length > 0 &&
-    record.selector.every(
-      (segment) => typeof segment === "string" && segment.length > 0,
-    )
+    record.selector.every((s) => typeof s === "string" && s.length > 0)
   ) {
     return record.selector;
   }
   return undefined;
 }
 
+function parseUtcTimestampMs(value) {
+  if (typeof value !== "string" || !UTC_TIMESTAMP_RE.test(value)) {
+    return Number.NaN;
+  }
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) return Number.NaN;
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const hour = Number(value.slice(11, 13));
+  const year = Number(value.slice(0, 4));
+  const isLeap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const maxDay =
+    month === 2
+      ? isLeap
+        ? 29
+        : 28
+      : month === 4 || month === 6 || month === 9 || month === 11
+        ? 30
+        : 31;
+  return day <= maxDay && hour <= 23 ? ms : Number.NaN;
+}
+
 export function isUtcTimestamp(value) {
-  return (
-    typeof value === "string" &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
-    !Number.isNaN(Date.parse(value)) &&
-    new Date(value).toISOString() === value
-  );
+  return !Number.isNaN(parseUtcTimestampMs(value));
 }
 
 export function isValidReasonRecord(record) {
   const selector = getRecordSelector(record);
   if (
     selector === undefined ||
-    (typeof record.reason === "string" && record.reason.trim() === "") ||
     typeof record.reason !== "string" ||
+    record.reason.trim() === "" ||
     !isUtcTimestamp(record.createdAt) ||
-    !isUtcTimestamp(record.updatedAt)
+    !isUtcTimestamp(record.updatedAt) ||
+    (record.target !== undefined && typeof record.target !== "string")
   ) {
     return false;
   }
-  if (record.target !== undefined && typeof record.target !== "string") {
-    return false;
-  }
-  if (
-    record.workspaces !== undefined &&
-    (!Array.isArray(record.workspaces) ||
-      record.workspaces.length === 0 ||
-      !record.workspaces.every(
-        (workspace) => typeof workspace === "string" && workspace.length > 0,
-      ))
-  ) {
-    return false;
-  }
-  return true;
+  return (
+    record.workspaces === undefined ||
+    (Array.isArray(record.workspaces) &&
+      record.workspaces.length > 0 &&
+      record.workspaces.every((w) => typeof w === "string" && w.length > 0))
+  );
 }
 
 export function getPromptTimeoutSeconds(manifest) {
   const defaultTimeout = 10;
-  const envTimeout = process.env.OVERRIDE_TIMEOUT;
-  const projectTimeout = manifest.config?.["why-override"]?.timeout;
-  const configured = envTimeout !== undefined ? envTimeout : projectTimeout;
+  const configured =
+    process.env.OVERRIDE_TIMEOUT ?? manifest.config?.["why-override"]?.timeout;
+  if (configured === undefined) return defaultTimeout;
 
-  if (configured === undefined) {
-    return defaultTimeout;
-  }
   const timeoutSeconds = Number(configured);
   if (
     (typeof configured === "string" || typeof configured === "number") &&
-    Number.isFinite(timeoutSeconds) &&
     Number.isInteger(timeoutSeconds) &&
     timeoutSeconds > 0
   ) {
@@ -85,11 +91,7 @@ export function getExistingReasons(reasonDocument) {
   const reasons = [];
   const seen = new Set();
   for (const record of reasonDocument?.reasons ?? []) {
-    if (
-      isValidReasonRecord(record) &&
-      typeof record.reason === "string" &&
-      record.reason.trim() !== ""
-    ) {
+    if (isValidReasonRecord(record)) {
       const trimmed = record.reason.trim();
       if (!seen.has(trimmed)) {
         seen.add(trimmed);
@@ -106,11 +108,8 @@ export function loadReasonStore(reasonStorePath, reasonStoreFilename) {
   try {
     reasonText = readFileSync(reasonStorePath, "utf8");
   } catch (error) {
-    if (error?.code === "ENOENT") {
-      reasonStoreMissing = true;
-    } else {
-      throw error;
-    }
+    if (error?.code !== "ENOENT") throw error;
+    reasonStoreMissing = true;
   }
 
   let reasonDocument;
@@ -125,9 +124,7 @@ export function loadReasonStore(reasonStorePath, reasonStoreFilename) {
   } else {
     try {
       reasonDocument = JSON.parse(reasonText);
-    } catch {
-      reasonDocument = undefined;
-    }
+    } catch {}
 
     if (
       reasonDocument === null ||
@@ -161,6 +158,7 @@ export function validateReasons({
   const reasonsBySelector = new Map();
   const workspacesBySelector = new Map();
   const warnMsg = (msg) => warn && warnDiagnostic(msg);
+  const nowMs = Date.now();
 
   for (const record of reasonDocument.reasons) {
     const selector = getRecordSelector(record);
@@ -190,21 +188,23 @@ export function validateReasons({
       );
     }
 
-    const currentTarget = getOverrideTarget(manifest, selector);
-    if (
-      record.target !== undefined &&
-      currentTarget !== undefined &&
-      record.target !== currentTarget
-    ) {
-      warnMsg(
-        `override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`,
-      );
-    }
+    if (warn) {
+      const currentTarget = getOverrideTarget(manifest, selector);
+      if (
+        record.target !== undefined &&
+        currentTarget !== undefined &&
+        record.target !== currentTarget
+      ) {
+        warnMsg(
+          `override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`,
+        );
+      }
 
-    if (Date.now() - Date.parse(record.updatedAt) >= minimumReviewAgeMs) {
-      warnMsg(
-        `Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`,
-      );
+      if (nowMs - parseUtcTimestampMs(record.updatedAt) >= minimumReviewAgeMs) {
+        warnMsg(
+          `Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`,
+        );
+      }
     }
   }
 

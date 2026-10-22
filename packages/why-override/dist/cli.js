@@ -40,17 +40,16 @@ function parseSelectorSegments(key) {
   }
   return segments;
 }
-function collectOverrideSelectors(overrides, parentPath = []) {
-  const selectors = [];
+function collectOverrideSelectors(overrides, parentPath = [], selectors = []) {
   for (const [key, value] of Object.entries(overrides ?? {})) {
     const segments = parseSelectorSegments(key);
-    const selector = [...parentPath, ...segments];
+    const selector = parentPath.length === 0 ? segments : [...parentPath, ...segments];
     if (selector.some((segment) => segment.includes("*"))) {
       console.warn(`Warning: unsupported wildcard override selector ${JSON.stringify(selector)}; skipping.`);
       continue;
     }
     if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      selectors.push(...collectOverrideSelectors(value, selector));
+      collectOverrideSelectors(value, selector, selectors);
     } else if (typeof value === "string") {
       selectors.push(selector);
     }
@@ -147,6 +146,7 @@ function getOverrideTarget(manifest, selector) {
 
 // packages/why-override/src/store.js
 import { readFileSync as readFileSync2 } from "node:fs";
+var UTC_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 function getRecordSelector(record) {
   if (record === null || typeof record !== "object" || Array.isArray(record)) {
     return;
@@ -154,37 +154,43 @@ function getRecordSelector(record) {
   if (typeof record.selector === "string" && record.selector.length > 0) {
     return [record.selector];
   }
-  if (Array.isArray(record.selector) && record.selector.length > 0 && record.selector.every((segment) => typeof segment === "string" && segment.length > 0)) {
+  if (Array.isArray(record.selector) && record.selector.length > 0 && record.selector.every((s) => typeof s === "string" && s.length > 0)) {
     return record.selector;
   }
   return;
 }
+function parseUtcTimestampMs(value) {
+  if (typeof value !== "string" || !UTC_TIMESTAMP_RE.test(value)) {
+    return Number.NaN;
+  }
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms))
+    return Number.NaN;
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const hour = Number(value.slice(11, 13));
+  const year = Number(value.slice(0, 4));
+  const isLeap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const maxDay = month === 2 ? isLeap ? 29 : 28 : month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
+  return day <= maxDay && hour <= 23 ? ms : Number.NaN;
+}
 function isUtcTimestamp(value) {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value;
+  return !Number.isNaN(parseUtcTimestampMs(value));
 }
 function isValidReasonRecord(record) {
   const selector = getRecordSelector(record);
-  if (selector === undefined || typeof record.reason === "string" && record.reason.trim() === "" || typeof record.reason !== "string" || !isUtcTimestamp(record.createdAt) || !isUtcTimestamp(record.updatedAt)) {
+  if (selector === undefined || typeof record.reason !== "string" || record.reason.trim() === "" || !isUtcTimestamp(record.createdAt) || !isUtcTimestamp(record.updatedAt) || record.target !== undefined && typeof record.target !== "string") {
     return false;
   }
-  if (record.target !== undefined && typeof record.target !== "string") {
-    return false;
-  }
-  if (record.workspaces !== undefined && (!Array.isArray(record.workspaces) || record.workspaces.length === 0 || !record.workspaces.every((workspace) => typeof workspace === "string" && workspace.length > 0))) {
-    return false;
-  }
-  return true;
+  return record.workspaces === undefined || Array.isArray(record.workspaces) && record.workspaces.length > 0 && record.workspaces.every((w) => typeof w === "string" && w.length > 0);
 }
 function getPromptTimeoutSeconds(manifest) {
   const defaultTimeout = 10;
-  const envTimeout = process.env.OVERRIDE_TIMEOUT;
-  const projectTimeout = manifest.config?.["why-override"]?.timeout;
-  const configured = envTimeout !== undefined ? envTimeout : projectTimeout;
-  if (configured === undefined) {
+  const configured = process.env.OVERRIDE_TIMEOUT ?? manifest.config?.["why-override"]?.timeout;
+  if (configured === undefined)
     return defaultTimeout;
-  }
   const timeoutSeconds = Number(configured);
-  if ((typeof configured === "string" || typeof configured === "number") && Number.isFinite(timeoutSeconds) && Number.isInteger(timeoutSeconds) && timeoutSeconds > 0) {
+  if ((typeof configured === "string" || typeof configured === "number") && Number.isInteger(timeoutSeconds) && timeoutSeconds > 0) {
     return timeoutSeconds;
   }
   console.warn(`Warning: invalid override prompt timeout ${JSON.stringify(configured)}; using default ${defaultTimeout} seconds.`);
@@ -194,7 +200,7 @@ function getExistingReasons(reasonDocument) {
   const reasons = [];
   const seen = new Set;
   for (const record of reasonDocument?.reasons ?? []) {
-    if (isValidReasonRecord(record) && typeof record.reason === "string" && record.reason.trim() !== "") {
+    if (isValidReasonRecord(record)) {
       const trimmed = record.reason.trim();
       if (!seen.has(trimmed)) {
         seen.add(trimmed);
@@ -210,11 +216,9 @@ function loadReasonStore(reasonStorePath, reasonStoreFilename) {
   try {
     reasonText = readFileSync2(reasonStorePath, "utf8");
   } catch (error) {
-    if (error?.code === "ENOENT") {
-      reasonStoreMissing = true;
-    } else {
+    if (error?.code !== "ENOENT")
       throw error;
-    }
+    reasonStoreMissing = true;
   }
   let reasonDocument;
   let reasonStoreWritable = true;
@@ -226,9 +230,7 @@ function loadReasonStore(reasonStorePath, reasonStoreFilename) {
   } else {
     try {
       reasonDocument = JSON.parse(reasonText);
-    } catch {
-      reasonDocument = undefined;
-    }
+    } catch {}
     if (reasonDocument === null || typeof reasonDocument !== "object" || !Array.isArray(reasonDocument?.reasons)) {
       warnDiagnostic(`${reasonStoreFilename} is malformed; saved reasons cannot be read or updated.`);
       reasonDocument = { version: 1, reasons: [] };
@@ -253,6 +255,7 @@ function validateReasons({
   const reasonsBySelector = new Map;
   const workspacesBySelector = new Map;
   const warnMsg = (msg) => warn && warnDiagnostic(msg);
+  const nowMs = Date.now();
   for (const record of reasonDocument.reasons) {
     const selector = getRecordSelector(record);
     const displaySelector = selector ? formatSelector(selector) : "unknown selector";
@@ -269,12 +272,14 @@ function validateReasons({
     if (Array.isArray(record.workspaces) && record.workspaces.length > 0) {
       workspacesBySelector.set(key, ` [workspaces: ${record.workspaces.join(", ")}]`);
     }
-    const currentTarget = getOverrideTarget(manifest, selector);
-    if (record.target !== undefined && currentTarget !== undefined && record.target !== currentTarget) {
-      warnMsg(`override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`);
-    }
-    if (Date.now() - Date.parse(record.updatedAt) >= minimumReviewAgeMs) {
-      warnMsg(`Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`);
+    if (warn) {
+      const currentTarget = getOverrideTarget(manifest, selector);
+      if (record.target !== undefined && currentTarget !== undefined && record.target !== currentTarget) {
+        warnMsg(`override target for ${displaySelector} changed from "${record.target}" to "${currentTarget}".`);
+      }
+      if (nowMs - parseUtcTimestampMs(record.updatedAt) >= minimumReviewAgeMs) {
+        warnMsg(`Review this override rationale for ${displaySelector}; it was last updated ${record.updatedAt}.`);
+      }
     }
   }
   return { reasonsBySelector, workspacesBySelector };
@@ -344,8 +349,12 @@ function runCheck(context) {
 // packages/why-override/src/doctor-deps.js
 import { existsSync, readdirSync, readFileSync as readFileSync3 } from "node:fs";
 import { resolve as resolve2 } from "node:path";
+var SEMVER_RE = /(\d+)\.(\d+)\.(\d+)/;
+var GTE_RE = /^>=?\s*(\d+\.\d+\.\d+)/;
+var SPEC_RE = /^[\^~]?\s*(\d+)\.(\d+)\.(\d+)/;
+var NODE_MODULES_PREFIX_RE = /^.*node_modules\//;
 function parseSemver(v) {
-  const match = String(v).match(/(\d+)\.(\d+)\.(\d+)/);
+  const match = String(v).match(SEMVER_RE);
   if (!match)
     return null;
   return {
@@ -369,14 +378,14 @@ function isSatisfied(requestedSpec, targetVersion) {
   if (trimmed === targetVersion || trimmed === `^${targetVersion}` || trimmed === `~${targetVersion}`) {
     return true;
   }
-  const gteMatch = trimmed.match(/^>=?\s*(\d+\.\d+\.\d+)/);
+  const gteMatch = trimmed.match(GTE_RE);
   if (gteMatch) {
     const minParsed = parseSemver(gteMatch[1]);
     if (minParsed && compareVersions(targetParsed, minParsed) >= 0) {
       return true;
     }
   }
-  const specMatch = trimmed.match(/^[\^~]?\s*(\d+)\.(\d+)\.(\d+)/);
+  const specMatch = trimmed.match(SPEC_RE);
   if (specMatch) {
     const specParsed = {
       major: Number(specMatch[1]),
@@ -398,72 +407,100 @@ function isSatisfied(requestedSpec, targetVersion) {
   }
   return false;
 }
-function findDependentsInLockfile(workspaceRoot, targetPackageName) {
+function addDepEntry(index, depName, entry) {
+  let list = index.get(depName);
+  if (!list) {
+    list = [];
+    index.set(depName, list);
+  }
+  list.push(entry);
+}
+function indexLockfile(workspaceRoot) {
   const lockfilePath = resolve2(workspaceRoot, "package-lock.json");
   if (!existsSync(lockfilePath))
     return null;
   try {
     const lockfile = JSON.parse(readFileSync3(lockfilePath, "utf8"));
-    const dependents = [];
+    const index = new Map;
     if (lockfile.packages && typeof lockfile.packages === "object") {
       for (const [pkgPath, pkgInfo] of Object.entries(lockfile.packages)) {
-        if (!pkgPath || pkgPath === "")
+        if (!pkgPath || pkgPath === "" || !pkgInfo)
           continue;
-        const deps = {
-          ...pkgInfo.dependencies,
-          ...pkgInfo.peerDependencies
-        };
-        if (deps[targetPackageName]) {
-          const spec = deps[targetPackageName];
-          const name = pkgInfo.name ?? pkgPath.replace(/^.*node_modules\//, "");
-          dependents.push({ name, path: pkgPath, spec });
+        const deps = pkgInfo.dependencies;
+        const peerDeps = pkgInfo.peerDependencies;
+        if (!deps && !peerDeps)
+          continue;
+        const name = pkgInfo.name ?? pkgPath.replace(NODE_MODULES_PREFIX_RE, "");
+        if (deps && typeof deps === "object") {
+          for (const [depName, spec] of Object.entries(deps)) {
+            if (peerDeps && depName in peerDeps)
+              continue;
+            addDepEntry(index, depName, { name, path: pkgPath, spec });
+          }
+        }
+        if (peerDeps && typeof peerDeps === "object") {
+          for (const [depName, spec] of Object.entries(peerDeps)) {
+            addDepEntry(index, depName, { name, path: pkgPath, spec });
+          }
         }
       }
-      return dependents;
+      return index;
     }
     if (lockfile.dependencies) {
       const scanV1Deps = (depsObj, parentName = "") => {
         for (const [name, info] of Object.entries(depsObj ?? {})) {
-          if (info.requires?.[targetPackageName]) {
-            dependents.push({
-              name: parentName || name,
-              path: `node_modules/${name}`,
-              spec: info.requires[targetPackageName]
-            });
+          if (info?.requires && typeof info.requires === "object") {
+            const resolvedName = parentName || name;
+            const pkgPath = `node_modules/${name}`;
+            for (const [depName, spec] of Object.entries(info.requires)) {
+              addDepEntry(index, depName, {
+                name: resolvedName,
+                path: pkgPath,
+                spec
+              });
+            }
           }
-          if (info.dependencies) {
+          if (info?.dependencies) {
             scanV1Deps(info.dependencies, name);
           }
         }
       };
       scanV1Deps(lockfile.dependencies);
-      return dependents;
+      return index;
     }
   } catch {
     return null;
   }
   return null;
 }
-function findDependentsInNodeModules(workspaceRoot, targetPackageName) {
+function indexNodeModules(workspaceRoot) {
+  const index = new Map;
   const nodeModulesDir = resolve2(workspaceRoot, "node_modules");
   if (!existsSync(nodeModulesDir))
-    return [];
-  const dependents = [];
+    return index;
   const checkPkg = (pkgDir, pkgName) => {
     try {
       const manifestPath = resolve2(pkgDir, "package.json");
-      if (existsSync(manifestPath)) {
-        const pkgManifest = JSON.parse(readFileSync3(manifestPath, "utf8"));
-        const deps = {
-          ...pkgManifest.dependencies,
-          ...pkgManifest.peerDependencies
-        };
-        if (deps[targetPackageName]) {
-          dependents.push({
-            name: pkgName,
-            path: `node_modules/${pkgName}`,
-            spec: deps[targetPackageName]
-          });
+      if (!existsSync(manifestPath))
+        return;
+      const pkgManifest = JSON.parse(readFileSync3(manifestPath, "utf8"));
+      const deps = pkgManifest.dependencies;
+      const peerDeps = pkgManifest.peerDependencies;
+      const pkgPath = `node_modules/${pkgName}`;
+      if (deps && typeof deps === "object") {
+        for (const [depName, spec] of Object.entries(deps)) {
+          if (peerDeps && depName in peerDeps)
+            continue;
+          if (depName !== pkgName) {
+            addDepEntry(index, depName, { name: pkgName, path: pkgPath, spec });
+          }
+        }
+      }
+      if (peerDeps && typeof peerDeps === "object") {
+        for (const [depName, spec] of Object.entries(peerDeps)) {
+          if (depName !== pkgName) {
+            addDepEntry(index, depName, { name: pkgName, path: pkgPath, spec });
+          }
         }
       }
     } catch {}
@@ -471,26 +508,29 @@ function findDependentsInNodeModules(workspaceRoot, targetPackageName) {
   try {
     const entries = readdirSync(nodeModulesDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (entry.name.startsWith("@")) {
-          const scopedDir = resolve2(nodeModulesDir, entry.name);
-          try {
-            const scopedEntries = readdirSync(scopedDir, {
-              withFileTypes: true
-            });
-            for (const scopedEntry of scopedEntries) {
-              if (scopedEntry.isDirectory()) {
-                checkPkg(resolve2(scopedDir, scopedEntry.name), `${entry.name}/${scopedEntry.name}`);
-              }
+      if (!entry.isDirectory())
+        continue;
+      if (entry.name.startsWith("@")) {
+        const scopedDir = resolve2(nodeModulesDir, entry.name);
+        try {
+          const scopedEntries = readdirSync(scopedDir, { withFileTypes: true });
+          for (const scopedEntry of scopedEntries) {
+            if (scopedEntry.isDirectory()) {
+              checkPkg(resolve2(scopedDir, scopedEntry.name), `${entry.name}/${scopedEntry.name}`);
             }
-          } catch {}
-        } else if (entry.name !== targetPackageName && !entry.name.startsWith(".")) {
-          checkPkg(resolve2(nodeModulesDir, entry.name), entry.name);
-        }
+          }
+        } catch {}
+      } else if (!entry.name.startsWith(".")) {
+        checkPkg(resolve2(nodeModulesDir, entry.name), entry.name);
       }
     }
   } catch {}
-  return dependents;
+  return index;
+}
+function buildDependentsLookup(workspaceRoot) {
+  const lockfileIndex = indexLockfile(workspaceRoot);
+  const index = lockfileIndex ?? indexNodeModules(workspaceRoot);
+  return (targetPackageName) => index.get(targetPackageName) ?? [];
 }
 
 // packages/why-override/src/doctor.js
@@ -538,6 +578,7 @@ ${color.yellow(`Orphaned Records (${orphaned.length}):`)}`);
     console.log(color.bold(`
 Override Analysis:`));
   }
+  const getDependents = selectors.length > 0 ? buildDependentsLookup(workspaceRoot) : () => [];
   for (const selector of selectors) {
     const key = selectorKey(selector);
     const displaySelector = formatSelector(selector);
@@ -554,8 +595,7 @@ ${color.bold(displaySelector)}`);
     } else {
       console.log(`  Reason: ${color.red("UNDOCUMENTED")}`);
     }
-    const lockfileDeps = findDependentsInLockfile(workspaceRoot, pkgName);
-    const dependents = lockfileDeps !== null ? lockfileDeps : findDependentsInNodeModules(workspaceRoot, pkgName);
+    const dependents = getDependents(pkgName);
     if (dependents.length === 0) {
       console.log(`  Status: ${color.cyan("Safe to Remove")} (no parent packages found requesting "${pkgName}")`);
     } else {

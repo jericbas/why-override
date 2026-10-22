@@ -18,12 +18,15 @@ export function parseSelectorSegments(key) {
   return segments;
 }
 
-export function collectOverrideSelectors(overrides, parentPath = []) {
-  const selectors = [];
-
+export function collectOverrideSelectors(
+  overrides,
+  parentPath = [],
+  selectors = [],
+) {
   for (const [key, value] of Object.entries(overrides ?? {})) {
     const segments = parseSelectorSegments(key);
-    const selector = [...parentPath, ...segments];
+    const selector =
+      parentPath.length === 0 ? segments : [...parentPath, ...segments];
     if (selector.some((segment) => segment.includes("*"))) {
       console.warn(
         `Warning: unsupported wildcard override selector ${JSON.stringify(selector)}; skipping.`,
@@ -32,7 +35,7 @@ export function collectOverrideSelectors(overrides, parentPath = []) {
     }
 
     if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      selectors.push(...collectOverrideSelectors(value, selector));
+      collectOverrideSelectors(value, selector, selectors);
     } else if (typeof value === "string") {
       selectors.push(selector);
     }

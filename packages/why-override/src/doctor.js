@@ -1,9 +1,5 @@
 import { color } from "./color.js";
-import {
-  findDependentsInLockfile,
-  findDependentsInNodeModules,
-  isSatisfied,
-} from "./doctor-deps.js";
+import { buildDependentsLookup, isSatisfied } from "./doctor-deps.js";
 import {
   formatSelector,
   getOverrideTarget,
@@ -68,6 +64,9 @@ export function runDoctor(context) {
     console.log(color.bold("\nOverride Analysis:"));
   }
 
+  const getDependents =
+    selectors.length > 0 ? buildDependentsLookup(workspaceRoot) : () => [];
+
   for (const selector of selectors) {
     const key = selectorKey(selector);
     const displaySelector = formatSelector(selector);
@@ -85,11 +84,7 @@ export function runDoctor(context) {
       console.log(`  Reason: ${color.red("UNDOCUMENTED")}`);
     }
 
-    const lockfileDeps = findDependentsInLockfile(workspaceRoot, pkgName);
-    const dependents =
-      lockfileDeps !== null
-        ? lockfileDeps
-        : findDependentsInNodeModules(workspaceRoot, pkgName);
+    const dependents = getDependents(pkgName);
 
     if (dependents.length === 0) {
       console.log(
