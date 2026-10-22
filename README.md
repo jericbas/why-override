@@ -7,6 +7,9 @@
 
 [![deps](https://nodei.co/npm/why-override.png)](https://www.npmjs.com/package/why-override)
 
+[![Release Please](https://github.com/jericbas/why-override/actions/workflows/release-please.yml/badge.svg)](https://github.com/jericbas/why-override/actions/workflows/release-please.yml)
+
+
 `why-override` is a CLI that displays and maintains explanations for npm override selectors. Override declarations stay in your project's root `package.json`; explanations live in a tracked root `.override-reasons.jsonc` file (with backwards-compatible fallback to `override-reasons.jsonc`).
 
 ## Install

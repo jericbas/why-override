@@ -24,9 +24,10 @@ From the repository root:
 
 ```sh
 bun install
+git config core.hooksPath .githooks
 ```
 
-The root `preinstall` script runs the enforcer. It reads the root `package.json` and `.override-reasons.jsonc`.
+The root `preinstall` script runs the enforcer. It reads the root `package.json` and `.override-reasons.jsonc`. Configuring `core.hooksPath` enables the commit message hook (`.githooks/commit-msg`), ensuring commits adhere to Conventional Commits (`feat:`, `fix:`, `chore:`, etc.) for Release Please.
 
 ## Common commands
 
@@ -93,3 +94,23 @@ This checks that the tarball includes the package README, license, manifest, and
 ## Repository guidance
 
 - GitHub Issues are the source of tickets and specs.
+
+## Release process
+
+Automated releases and npm publishing are handled by [Google's Release Please](https://github.com/googleapis/release-please-action) via GitHub Actions.
+
+### Branching workflow
+
+1. **Feature branches:** Branch off `develop` using standard naming (`feat/*`, `fix/*`, `docs/*`, `chore/*`).
+2. **Conventional Commits:** All PRs and commits must follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g., `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`). Release Please uses these prefixes to determine semver bumps (`feat` for minor, `fix` for patch, `!` or `BREAKING CHANGE` for major) and generate changelog entries.
+3. **Merge to `develop`:** Pull requests are reviewed and merged into `develop`.
+4. **Promote to `main`:** When ready to cut a release, open a PR from `develop` into `main`. Ensure commit history or PR titles maintain conventional commit formatting.
+5. **Merge Release PR:**
+   - Pushing to `main` triggers `.github/workflows/release-please.yml`, which creates or updates a release PR.
+   - Merging this release PR generates the GitHub tag, release notes, and triggers automated publishing to npm.
+6. **Sync `develop`:** Merge `main` back into `develop` to sync version bumps and changelog updates.
+
+### Manual / emergency publish
+
+If an emergency manual publish is required, use GitHub Actions' `workflow_dispatch` on the `Release Please` workflow with `force_publish: true`.
+
