@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/jericbas/why-override/compare/v1.1.0...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* **cli:** switch to standard .override-reasons.json and zero dependencies ([f1b71a2](https://github.com/jericbas/why-override/commit/f1b71a2a3456005af113f003281918fd7582e165))
+* **cli:** switch to standard .override-reasons.json and zero dependencies ([61fb214](https://github.com/jericbas/why-override/commit/61fb2148b2074e57bf7ed529bcd4d2b7027c78a8)), closes [#39](https://github.com/jericbas/why-override/issues/39)
+
 ## [1.1.0](https://github.com/jericbas/why-override/compare/v1.0.0...v1.1.0) (2026-10-22)
 
 
